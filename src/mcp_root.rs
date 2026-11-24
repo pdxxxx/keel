@@ -238,7 +238,10 @@ mod tests {
                 .unwrap(),
             canonicalize(&other).unwrap()
         );
-        assert_eq!(roots.for_tool("keel_rules_list", None).unwrap(), first);
+        assert_eq!(
+            roots.for_tool("keel_rules_list", None).unwrap(),
+            canonicalize(&first).unwrap()
+        );
     }
 
     #[test]
