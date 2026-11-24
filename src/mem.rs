@@ -309,9 +309,8 @@ fn json_turn(source: &str, line: &str, visit: &mut impl FnMut(&'static str, &str
     }
 }
 
-fn normalized_path(value: &str) -> Option<String> {
-    let decoded;
-    let value = if value
+fn decode_raw_path(value: &str) -> Option<Cow<'_, str>> {
+    if value
         .get(..7)
         .is_some_and(|start| start.eq_ignore_ascii_case("file://"))
     {
@@ -325,14 +324,18 @@ fn normalized_path(value: &str) -> Option<String> {
         } else {
             &path
         };
-        decoded = url
+        let decoded = url
             .host_str()
             .map_or_else(|| path.to_owned(), |host| format!("//{host}{path}"));
-        &decoded
+        Some(Cow::Owned(decoded))
     } else {
-        value
-    };
-    let value = value.replace('\\', "/").to_lowercase();
+        Some(Cow::Borrowed(value))
+    }
+}
+
+fn normalized_path(value: &str) -> Option<String> {
+    let decoded = decode_raw_path(value)?;
+    let value = decoded.replace('\\', "/").to_lowercase();
     let (prefix, rest) = if let Some(rest) = value.strip_prefix('/') {
         ("/", rest)
     } else if matches!(value.as_bytes(), [letter,b':',b'/',..] if letter.is_ascii_alphabetic()) {
@@ -358,16 +361,42 @@ fn normalized_path(value: &str) -> Option<String> {
     })
 }
 
+fn canonical_normalized_path(path: &Path) -> Option<String> {
+    if let Ok(canon) = std::fs::canonicalize(path) {
+        let text = canon.to_string_lossy();
+        #[cfg(windows)]
+        if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+            return normalized_path(&format!("//{unc}"));
+        }
+        #[cfg(windows)]
+        if let Some(local) = text.strip_prefix(r"\\?\") {
+            return normalized_path(local);
+        }
+        return normalized_path(&text);
+    }
+    normalized_path(&path.to_string_lossy())
+}
+
+fn path_matches_root(path: &str, root: &str) -> bool {
+    path == root
+        || path
+            .strip_prefix(root)
+            .is_some_and(|suffix| root.ends_with('/') || suffix.starts_with('/'))
+}
+
 fn ownership(data: &Value, root: &str) -> Option<bool> {
     fn inspect(value: &Value, root: &str) -> Option<bool> {
         if let Some(text) = value.as_str() {
             let path = normalized_path(text)?;
-            return Some(
-                path == root
-                    || path
-                        .strip_prefix(root)
-                        .is_some_and(|suffix| root.ends_with('/') || suffix.starts_with('/')),
-            );
+            if path_matches_root(&path, root) {
+                return Some(true);
+            }
+            if let Some(raw) = decode_raw_path(text)
+                && let Some(canon) = canonical_normalized_path(Path::new(raw.as_ref()))
+            {
+                return Some(path_matches_root(&canon, root));
+            }
+            return Some(false);
         }
         let mut known = None;
         if let Some(items) = value.as_array() {
@@ -723,7 +752,7 @@ fn detail(root: &Path, doc: &Document, project_only: bool, turn_limit: usize) ->
     let mut name = String::new();
     visit_document(
         doc,
-        &normalized_path(&root.to_string_lossy()).unwrap_or_default(),
+        &canonical_normalized_path(root).unwrap_or_default(),
         turn_limit > 0,
         |role, text, stamp, project| {
             if project_only && !project {
@@ -1044,7 +1073,7 @@ pub(crate) fn search(
     }
     let mut best: BinaryHeap<RankedHit> = BinaryHeap::new();
     let mut order = 0;
-    let normalized = normalized_path(&root.to_string_lossy()).unwrap_or_default();
+    let normalized = canonical_normalized_path(root).unwrap_or_default();
     for doc in documents(root, source)? {
         if limit == 0 {
             break;

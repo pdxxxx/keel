@@ -714,13 +714,15 @@ fn doctor_reports_git_missing_from_path_as_a_health_error() {
 #[cfg(unix)]
 #[test]
 fn snapshot_refuses_unrepresentable_filenames_instead_of_backup_under_an_alias() {
+    #[cfg(not(target_os = "macos"))]
     use std::os::unix::ffi::OsStringExt;
     let repo = Repo::new();
     repo.put(".trellis/sub/name", "keep");
-    for name in [
-        std::ffi::OsString::from(r"sub\name"),
-        std::ffi::OsString::from_vec(vec![255, b'x']),
-    ] {
+    #[allow(unused_mut)]
+    let mut names = vec![std::ffi::OsString::from(r"sub\name")];
+    #[cfg(not(target_os = "macos"))]
+    names.push(std::ffi::OsString::from_vec(vec![255, b'x']));
+    for name in names {
         let path = repo.root.join(".trellis").join(name);
         put(&path, "separate");
         repo.fail(&["migrate", "cleanup", "--state-dir", repo.st()]);
