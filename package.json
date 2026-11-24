@@ -1,0 +1,48 @@
+{
+  "name": "keel-cli",
+  "version": "1.0.0",
+  "description": "Harness-agnostic engineering context, memory, and verification layer for AI coding.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pdxxxx/keel.git"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "keel": "./bin/keel.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "ARCHITECTURE.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

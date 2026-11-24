@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22]
+
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTUP_TOOLCHAIN: stable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Dogfood Keel rules check
+        run: node bin/keel.js rules check
+
+      - name: Set up Rust with Clippy
+        run: rustup toolchain install stable --profile minimal --component clippy
+
+      - name: Test native MCP server
+        working-directory: crates/keel-mcp
+        run: cargo test --locked
+
+      - name: Lint native MCP server
+        working-directory: crates/keel-mcp
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build native MCP server
+        working-directory: crates/keel-mcp
+        run: cargo build --release --locked
+
+      - name: Compare Node and Rust MCP responses over stdio
+        run: node crates/keel-mcp/tests/parity.mjs

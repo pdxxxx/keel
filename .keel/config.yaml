@@ -1,0 +1,14 @@
+# Keel configuration
+version: 1
+verify:
+  gates:
+    - name: typecheck
+      command: pnpm typecheck
+    - name: build
+      command: pnpm build
+    - name: rules-check
+      command: node bin/keel.js rules check
+    - name: test
+      command: pnpm test
+memory:
+  sources: []
