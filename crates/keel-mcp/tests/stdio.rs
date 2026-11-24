@@ -162,7 +162,7 @@ fn set_mtime(path: &Path, seconds: u64) {
         .unwrap();
 }
 
-fn git(root: &Path, args: &[&str]) {
+fn git(root: &Path, args: &[&str]) -> String {
     let result = Command::new("git")
         .current_dir(root)
         .args(args)
@@ -173,6 +173,10 @@ fn git(root: &Path, args: &[&str]) {
         "git {args:?}: {}",
         String::from_utf8_lossy(&result.stderr)
     );
+    String::from_utf8(result.stdout)
+        .unwrap()
+        .trim_end()
+        .to_owned()
 }
 
 #[test]
@@ -182,7 +186,7 @@ fn handshake_catalog_blank_lines_notifications_and_rpc_errors() {
     let init = server.request("initialize", json!({"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}));
     assert_eq!(
         init["result"],
-        json!({"serverInfo":{"name":"keel-mcp","version":"1.0.0"},"protocolVersion":"2024-11-05","capabilities":{"tools":{}}})
+        json!({"serverInfo":{"name":"keel-mcp","version":"1.1.0"},"protocolVersion":"2024-11-05","capabilities":{"tools":{}}})
     );
     server.send(b"\r\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"method\":\"notifications/cancelled\",\"id\":7}\n");
     let list = server.request("tools/list", json!({}));
@@ -197,11 +201,11 @@ fn handshake_catalog_blank_lines_notifications_and_rpc_errors() {
     let expected_keys: [&[&str]; 9] = [
         &[],
         &["git", "includeGlobal", "paths"],
-        &[],
+        &["stale"],
         &["includeArchived", "status"],
         &["slug", "title"],
         &["id"],
-        &["failFast", "gates"],
+        &["failFast", "gates", "git"],
         &["limit", "query", "source"],
         &["limit", "source"],
     ];
@@ -266,20 +270,21 @@ fn scoped_rules_include_staged_unstaged_untracked_and_global() {
     put(&root.join("staged.txt"), "base");
     put(&root.join(".gitignore"), "ignored.txt\n");
     git(root, &["add", "."]);
-    git(
+    let tree = git(root, &["write-tree"]);
+    let revision = git(
         root,
         &[
             "-c",
             "user.name=Keel Test",
             "-c",
             "user.email=test@example.invalid",
-            "-c",
-            "commit.gpgsign=false",
-            "commit",
-            "-qm",
+            "commit-tree",
+            &tree,
+            "-m",
             "fixture",
         ],
     );
+    git(root, &["update-ref", "HEAD", &revision]);
     put(&root.join("staged.txt"), "staged");
     git(root, &["add", "staged.txt"]);
     put(&root.join("working.txt"), "working");
@@ -599,6 +604,42 @@ fn cli_diagnostics_do_not_write_stdout() {
 }
 
 #[test]
+fn incremental_verify_and_stale_rules_are_opt_in_over_stdio() {
+    let fixture = Fixture::new();
+    let root = &fixture.root;
+    git(root, &["init", "-q"]);
+    put(
+        &root.join(".keel/config.yaml"),
+        "verify:\n  gates:\n    - {name: api, command: echo api, paths: [api/**]}\n    - {name: ui, command: echo ui, paths: [ui/**]}\n    - {name: all, command: echo all}\n",
+    );
+    put(
+        &root.join(".keel/rules/scoped.md"),
+        "---\nid: scope\nsummary: Scoped\npaths: [api/**]\n---\n",
+    );
+    let mut server = fixture.start();
+    let normal = server.data("keel_rules_check", json!({}));
+    assert!(normal.get("warnings").is_none());
+    let stale = server.data("keel_rules_check", json!({"stale":true}));
+    assert_eq!(stale["valid"], true);
+    assert_eq!(stale["warnings"].as_array().unwrap().len(), 1);
+    let none = server.data("keel_verify", json!({"git":true}));
+    assert_eq!(none["skipped"], json!(["api", "ui"]));
+    put(&root.join("api/文.txt"), "change");
+    assert_eq!(
+        server.data("keel_rules_check", json!({"stale":true}))["warnings"],
+        json!([])
+    );
+    let matched = server.data("keel_verify", json!({"git":true}));
+    assert_eq!(matched["skipped"], json!(["ui"]));
+    assert_eq!(matched["gates"][0]["name"], "api");
+    assert_eq!(matched["gates"][1]["name"], "all");
+    let explicit = server.data("keel_verify", json!({"git":true,"gates":["ui"]}));
+    assert_eq!(explicit["gates"][0]["name"], "ui");
+    assert!(explicit.get("skipped").is_none());
+    server.finish();
+}
+
+#[test]
 fn bounded_results_across_many_files_and_a_large_transcript() {
     let fixture = Fixture::new();
     for index in 0..64 {
@@ -651,7 +692,7 @@ fn inaccessible_directories_do_not_hide_readable_siblings() {
     put(&locked.join("a.md"), "inside");
     put(&fixture.env_dir.join("b.md"), "outside");
     let original = fs::metadata(&locked).unwrap().permissions();
-    fs::set_permissions(&locked, fs::Permissions::from_mode(0)).unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     let inaccessible = fs::read_dir(&locked).is_err();
     let mut server = fixture.start();
     let sessions = server.data("keel_mem_sessions", json!({"source":"custom"}));

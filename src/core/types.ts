@@ -18,6 +18,7 @@ export interface RuleValidationReport {
   valid: boolean;
   checked: number;
   issues: RuleIssue[];
+  warnings?: RuleIssue[];
 }
 
 export type TaskStatus = "open" | "done";
@@ -39,6 +40,7 @@ export interface VerifyGateConfig {
   name: string;
   command: string;
   cwd?: string;
+  paths?: string[];
 }
 
 export interface MemoryConfig {
@@ -65,6 +67,7 @@ export interface VerifyGateResult {
 export interface VerifyReport {
   passed: boolean;
   gates: VerifyGateResult[];
+  skipped?: string[];
 }
 
 export interface MemoryTurn {
@@ -93,11 +96,12 @@ export interface MemorySearchHit {
 }
 
 export interface AblateManifestEntry {
-  kind: "file" | "agents-block";
+  kind: "file" | "agents-block" | "config-edit";
   relativePath: string;
   originalSha256: string;
   postAblateSha256: string | null;
   backupRelPath: string;
+  originalMode?: number;
 }
 
 export interface AblateManifest {
@@ -105,4 +109,6 @@ export interface AblateManifest {
   repoRoot: string;
   createdAt: string;
   entries: AblateManifestEntry[];
+  directories?: string[];
+  operation?: "migrate";
 }

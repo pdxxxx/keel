@@ -21,37 +21,37 @@ export function getGitChangedFiles(
       cwd: repoRoot,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: Infinity,
     });
     if (proc.status !== 0 || typeof proc.stdout !== "string") {
       return [];
     }
     return proc.stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
+      .split("\0")
       .filter((line) => line.length > 0)
       .map((line) => toPosixPath(line));
   };
 
   if (options.baseRef) {
-    for (const f of runGit(["diff", "--name-only", `${options.baseRef}...HEAD`])) {
+    for (const f of runGit(["diff", "--name-only", "-z", "--end-of-options", `${options.baseRef}...HEAD`, "--"])) {
       files.add(f);
     }
-    for (const f of runGit(["diff", "--name-only"])) {
+    for (const f of runGit(["diff", "--name-only", "-z"])) {
       files.add(f);
     }
     return [...files].sort();
   }
 
   if (options.staged) {
-    for (const f of runGit(["diff", "--cached", "--name-only"])) {
+    for (const f of runGit(["diff", "--cached", "--name-only", "-z"])) {
       files.add(f);
     }
     return [...files].sort();
   }
 
-  for (const f of runGit(["diff", "--name-only"])) files.add(f);
-  for (const f of runGit(["diff", "--cached", "--name-only"])) files.add(f);
-  for (const f of runGit(["ls-files", "--others", "--exclude-standard"])) {
+  for (const f of runGit(["diff", "--name-only", "-z"])) files.add(f);
+  for (const f of runGit(["diff", "--cached", "--name-only", "-z"])) files.add(f);
+  for (const f of runGit(["ls-files", "--others", "--exclude-standard", "-z"])) {
     files.add(f);
   }
 

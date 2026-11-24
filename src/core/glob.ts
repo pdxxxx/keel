@@ -1,5 +1,16 @@
 import { toPosixPath } from "./paths.js";
 
+export function globPaths(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && !!item.trim())
+    .map((item) => toPosixPath(item.trim()));
+}
+
+export function matchesAnyPath(pattern: string, targets: string[]): boolean {
+  const matcher = globToRegExp(pattern);
+  return targets.some((target) => matcher.test(toPosixPath(target).replace(/^\/+/, "")));
+}
+
 /**
  * Convert a POSIX glob pattern into a RegExp.
  * Supports single-star, double-star directory globs, and `?` wildcards.

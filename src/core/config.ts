@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import YAML from "yaml";
+import { globPaths } from "./glob.js";
 import { CONFIG_FILE, keelPath } from "./paths.js";
 import type { KeelConfig, VerifyGateConfig } from "./types.js";
 
@@ -41,6 +42,7 @@ export function loadConfig(repoRoot: string): KeelConfig {
       gates.push({
         name: rec.name.trim(),
         command: rec.command.trim(),
+        ...(Array.isArray(rec.paths) ? { paths: globPaths(rec.paths) } : {}),
         ...(typeof rec.cwd === "string" && rec.cwd.trim().length > 0
           ? { cwd: rec.cwd.trim() }
           : {}),

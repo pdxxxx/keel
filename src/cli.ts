@@ -3,8 +3,10 @@ import path from "node:path";
 import { Command } from "commander";
 import { ablateRepo, getAblateStatus, restoreRepo } from "./core/ablate.js";
 import { getGitChangedFiles } from "./core/git.js";
+import { gitHotspots } from "./core/hotspots.js";
 import { initRepo } from "./core/init.js";
 import { startMcpStdioServer } from "./core/mcp.js";
+import { cleanupMigration, planMigration, rollbackMigration, scanMigration } from "./core/migrate.js";
 import {
   getMemorySession,
   listMemorySessions,
@@ -218,10 +220,12 @@ export function createProgram(): Command {
   rulesCmd
     .command("check")
     .description("Validate frontmatter, IDs, and schema of all .keel/rules/ files")
+    .option("--stale", "Warn about dead path globs, long rules and excess global rules")
+    .option("--strict", "Run stale checks and fail on warnings as well as errors")
     .option("--json", "Output JSON")
-    .action((opts: { json?: boolean }) => {
+    .action((opts: { json?: boolean; stale?: boolean; strict?: boolean }) => {
       const root = resolveRepoRoot();
-      const report = validateRules(root);
+      const report = validateRules(root, { stale: opts.stale || opts.strict });
       if (opts.json) {
         printJson(report);
       } else if (report.valid) {
@@ -232,7 +236,8 @@ export function createProgram(): Command {
           console.log(`  - ${issue.file}: ${issue.message}`);
         }
       }
-      if (!report.valid) {
+      if (!opts.json) for (const warning of report.warnings ?? []) console.log(`  [WARN] ${warning.file}: ${warning.message}`);
+      if (!report.valid || (opts.strict && report.warnings?.length)) {
         process.exitCode = 1;
       }
     });
@@ -357,20 +362,24 @@ export function createProgram(): Command {
     .command("verify")
     .description("Run deterministic verification gates from .keel/config.yaml")
     .option("-g, --gate <name...>", "Run specific gate(s) by name")
+    .option("--git", "Run global gates and gates matching uncommitted files")
+    .option("--staged", "Scope gates to staged changes")
+    .option("--base <ref>", "Scope gates to changes since a Git ref")
     .option("--fail-fast", "Stop running remaining gates after first failure")
     .option("--json", "Output JSON")
     .action(
-      (opts: { gate?: string[]; failFast?: boolean; json?: boolean }) => {
+      (opts: { gate?: string[]; failFast?: boolean; git?: boolean; staged?: boolean; base?: string; json?: boolean }) => {
         const root = resolveRepoRoot();
         const report = runVerify(root, {
           gateNames: opts.gate,
+          git: opts.git, staged: opts.staged, baseRef: opts.base,
           failFast: opts.failFast,
         });
         if (opts.json) {
           printJson(report);
         } else if (report.gates.length === 0) {
           console.log(
-            "No verification gates configured in .keel/config.yaml yet.",
+            report.skipped?.length ? "No gates match the changed files." : "No verification gates configured in .keel/config.yaml yet.",
           );
         } else {
           for (const g of report.gates) {
@@ -383,11 +392,27 @@ export function createProgram(): Command {
             }
           }
         }
+        if (!opts.json && report.skipped?.length) console.log(`Skipped by path: ${report.skipped.join(", ")}`);
         if (!report.passed) {
           process.exitCode = 1;
         }
       },
     );
+
+  program.command("hotspots")
+    .description("Rank existing files by recent changes and bugfix commits")
+    .option("--commits <n>", "Number of recent commits to inspect", "100")
+    .option("--limit <n>", "Maximum files to return", "10")
+    .option("--json", "Output JSON")
+    .action((opts: { commits: string; limit: string; json?: boolean }) => {
+      const hits = gitHotspots(resolveRepoRoot(), parsePositiveInt(opts.commits, 100), parsePositiveInt(opts.limit, 10));
+      if (opts.json) return printJson(hits);
+      if (!hits.length) console.log("No hotspots found in Git history.");
+      for (const hit of hits) {
+        console.log(`${hit.file}: score ${hit.score} (${hit.fixTouches} fix / ${hit.touches} total touches)`);
+        for (const fix of hit.recentFixes) console.log(`  ${fix.hash} ${fix.subject}`);
+      }
+    });
 
   // keel mem
   const memCmd = program
@@ -496,6 +521,39 @@ export function createProgram(): Command {
         }
       },
     );
+
+  const migrate = program.command("migrate").description("Inspect legacy AI setups and safely retire conflicting files");
+  migrate.command("scan").description("Inventory legacy surfaces without writing files").option("--json", "Output JSON").action((opts) => {
+    const scan = scanMigration(resolveRepoRoot());
+    if (opts.json) return printJson(scan);
+    if (!scan.items.length) console.log("No migration surfaces found.");
+    for (const item of scan.items) console.log(`[${item.category}] ${item.framework}: ${item.path}${item.globs ? ` (${item.globs.join(", ")})` : ""}`);
+  });
+  migrate.command("plan").description("Suggest conflicts, gates, memory sources and rules to distill").option("--json", "Output JSON").action((opts) => {
+    const plan = planMigration(resolveRepoRoot());
+    if (opts.json) return printJson(plan);
+    for (const item of plan.conflicts) console.log(`[conflict] ${item.path}`);
+    for (const gate of plan.suggestedGates) console.log(`[gate] ${gate.name}: ${gate.command}`);
+    for (const dir of plan.suggestedMemorySources) console.log(`[memory] ${dir}`);
+    for (const item of plan.ruleSources) console.log(`[distill] ${item.path}`);
+  });
+  migrate.command("cleanup").description("Back up and remove only conflicting legacy surfaces")
+    .option("--dry-run", "Preview every affected file and directory; write nothing")
+    .option("--state-dir <dir>", "External backup directory").option("--json", "Output JSON").action((opts) => {
+      const result = cleanupMigration(resolveRepoRoot(), opts);
+      if (opts.json) return printJson(result);
+      console.log(`${result.dryRun ? "Would clean" : "Cleaned"} ${result.entries.length} file(s); snapshot: ${result.snapshotDir}`);
+      for (const item of result.entries) console.log(`  ${item.relativePath}`);
+      for (const dir of result.directories ?? []) console.log(`  ${dir}/`);
+    });
+  migrate.command("rollback").description("Restore a verified migration snapshot")
+    .option("--state-dir <dir>", "External backup directory").option("--force", "Overwrite conflicting files")
+    .option("--json", "Output JSON").action((opts) => {
+      const result = rollbackMigration(resolveRepoRoot(), opts);
+      if (opts.json) return printJson(result);
+      console.log(`Restored ${result.restored.length} file(s).`);
+      for (const file of result.restored) console.log(`  ${file}`);
+    });
 
   // keel ablate & restore
   const ablateCmd = program

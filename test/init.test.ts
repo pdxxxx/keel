@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe("initRepo", () => {
-  it("creates .keel, AGENTS.md, and all four standard skills cleanly", () => {
+  it("creates .keel, AGENTS.md, and all standard skills cleanly", () => {
     const root = makeTempRepo();
     const res = initRepo(root);
 
@@ -31,6 +31,7 @@ describe("initRepo", () => {
     expect(res.created).toContain(".agents/skills/keel-verify/SKILL.md");
     expect(res.created).toContain(".agents/skills/keel-distill/SKILL.md");
     expect(res.created).toContain(".agents/skills/keel-mem/SKILL.md");
+    expect(res.created).toContain(".agents/skills/keel-migrate/SKILL.md");
   });
 
   it("auto-detects pnpm scripts into .keel/config.yaml gates", () => {

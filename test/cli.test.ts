@@ -32,7 +32,7 @@ describe("CLI end-to-end", () => {
     const repo = makeTempDir("keel-e2e-repo-");
     const stateDir = makeTempDir("keel-e2e-state-");
 
-    expect(runKeel(repo, ["--version"]).stdout.trim()).toBe("1.0.0");
+    expect(runKeel(repo, ["--version"]).stdout.trim()).toBe("1.1.0");
     expect(runKeel(repo, ["init"]).status).toBe(0);
 
     const addRes = runKeel(repo, [

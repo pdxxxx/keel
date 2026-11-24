@@ -1,3 +1,4 @@
+use crate::config::glob_paths;
 use crate::paths::{js_whitespace, posix, read_text, relative, trim};
 use anyhow::Result;
 use regex::Regex;
@@ -29,6 +30,8 @@ pub(crate) struct Validation {
     pub valid: bool,
     checked: usize,
     issues: Vec<Issue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warnings: Option<Vec<Issue>>,
 }
 
 fn files(dir: &Path) -> Result<Vec<PathBuf>> {
@@ -96,15 +99,7 @@ pub(crate) fn list(root: &Path) -> Result<Vec<Rule>> {
         if name == "index.md" && data["id"].as_str().is_none() {
             continue;
         }
-        let paths: Vec<_> = data["paths"]
-            .as_sequence()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .map(trim)
-            .filter(|path| !path.is_empty())
-            .map(posix)
-            .collect();
+        let paths = glob_paths(&data["paths"]);
         rules.push(Rule {
             id: field(&data, "id").map_or_else(
                 || name.strip_suffix(".md").unwrap_or(&name).replace('/', ":"),
@@ -168,26 +163,29 @@ fn compile_glob(pattern: &str) -> Result<Regex> {
     Ok(Regex::new(&expression)?)
 }
 
+pub(crate) fn matches_paths(patterns: &[String], targets: &[String]) -> Result<bool> {
+    for pattern in patterns {
+        let matcher = compile_glob(pattern)?;
+        if targets
+            .iter()
+            .any(|target| matcher.is_match(&glob_units(target.trim_start_matches('/'))))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 pub(crate) fn matching(root: &Path, targets: &[String], include_global: bool) -> Result<Vec<Rule>> {
-    let normalized: Vec<_> = targets.iter().map(|target| posix(&posix(target))).collect();
-    let targets: Vec<_> = normalized
-        .iter()
-        .map(|target| glob_units(target.trim_start_matches('/')))
-        .collect();
+    let targets: Vec<_> = targets.iter().map(|target| posix(&posix(target))).collect();
     let mut matched = Vec::new();
     for rule in list(root)? {
         if rule.global {
             if include_global {
                 matched.push(rule);
             }
-        } else if !targets.is_empty() {
-            for pattern in &rule.paths {
-                let matcher = compile_glob(pattern)?;
-                if targets.iter().any(|target| matcher.is_match(target)) {
-                    matched.push(rule);
-                    break;
-                }
-            }
+        } else if !targets.is_empty() && matches_paths(&rule.paths, &targets)? {
+            matched.push(rule);
         }
     }
     Ok(matched)
@@ -215,11 +213,31 @@ fn js_string(value: &Value) -> String {
     }
 }
 
-pub(crate) fn check(root: &Path) -> Result<Validation> {
+fn working_files(root: &Path) -> Result<Vec<String>> {
+    let mut targets = Vec::new();
+    for entry in WalkDir::new(root).into_iter().filter_entry(|entry| {
+        let name = entry.file_name().to_str();
+        entry.depth() == 0
+            || (name != Some(".git")
+                && !(entry.file_type().is_dir()
+                    && matches!(name, Some("node_modules" | "target" | "dist"))))
+    }) {
+        let entry = entry?;
+        if entry.file_type().is_file() {
+            targets.push(relative(root, entry.path()));
+        }
+    }
+    Ok(targets)
+}
+
+pub(crate) fn check(root: &Path, stale: bool) -> Result<Validation> {
     let dir = root.join(".keel/rules");
     let mut issues = Vec::new();
     let mut checked = 0;
     let mut seen = HashMap::new();
+    let mut warnings = Vec::new();
+    let mut targets = None;
+    let mut global_count = 0;
     for path in files(&dir)? {
         let text = read_text(&path)?;
         let parsed = frontmatter(&text);
@@ -228,6 +246,39 @@ pub(crate) fn check(root: &Path) -> Result<Validation> {
         }
         checked += 1;
         let file = relative(root, &path);
+        if stale {
+            let data = parsed
+                .as_ref()
+                .and_then(|(data, _)| data.as_ref().ok())
+                .unwrap_or(&Value::Null);
+            if relative(&dir, &path) != "index.md" || data["id"].as_str().is_some() {
+                let lines = text.lines().count();
+                if lines > 80 {
+                    warnings.push(Issue {
+                        file: file.clone(),
+                        message: format!("Rule has {lines} lines (recommended maximum: 80)."),
+                    });
+                }
+                let patterns = glob_paths(&data["paths"]);
+                if patterns.is_empty() {
+                    global_count += 1;
+                }
+                for pattern in &patterns {
+                    if targets.is_none() {
+                        targets = Some(working_files(root)?);
+                    }
+                    if !matches_paths(
+                        std::slice::from_ref(pattern),
+                        targets.as_deref().unwrap_or_default(),
+                    )? {
+                        warnings.push(Issue {
+                            file: file.clone(),
+                            message: format!("Path glob `{pattern}` matches no repository files."),
+                        });
+                    }
+                }
+            }
+        }
         let mut issue = |message| {
             issues.push(Issue {
                 file: file.clone(),
@@ -272,10 +323,17 @@ pub(crate) fn check(root: &Path) -> Result<Validation> {
             issue("`paths` must be an array of glob strings.".into());
         }
     }
+    if global_count > 5 {
+        warnings.push(Issue {
+            file: ".keel/rules".into(),
+            message: format!("{global_count} global rules (recommended maximum: 5)."),
+        });
+    }
     Ok(Validation {
         valid: issues.is_empty(),
         checked,
         issues,
+        warnings: stale.then_some(warnings),
     })
 }
 
@@ -283,6 +341,60 @@ pub(crate) fn check(root: &Path) -> Result<Validation> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn stale_check_excludes_build_trees_and_keeps_warnings_separate_from_validity() {
+        let repo = tempfile::tempdir().unwrap();
+        let root = repo.path();
+        for dir in [
+            ".keel/rules",
+            "src",
+            "nested/target",
+            "nested/node_modules",
+            "dist",
+            ".git",
+        ] {
+            fs::create_dir_all(root.join(dir)).unwrap();
+            if dir != ".keel/rules" && dir != "src" {
+                fs::write(root.join(dir).join("generated"), "").unwrap();
+            }
+        }
+        fs::write(root.join("src/文.rs"), "").unwrap();
+        fs::write(
+            root.join(".keel/rules/a.md"),
+            "---\nid: a\nsummary: scoped\npaths: [src/?.rs, '**/generated']\n---\n",
+        )
+        .unwrap();
+        for index in 0..6 {
+            let body = if index == 0 {
+                "line\r\n".repeat(77)
+            } else {
+                String::new()
+            };
+            fs::write(
+                root.join(format!(".keel/rules/g{index}.md")),
+                format!("---\nid: g{index}\nsummary: Global\n---\n{body}"),
+            )
+            .unwrap();
+        }
+        assert!(check(root, false).unwrap().warnings.is_none());
+        let report = check(root, true).unwrap();
+        assert!(report.valid);
+        let warnings = report.warnings.unwrap();
+        assert_eq!(warnings.len(), 3);
+        assert_eq!(
+            warnings[0].message,
+            "Path glob `**/generated` matches no repository files."
+        );
+        assert_eq!(
+            warnings[1].message,
+            "Rule has 81 lines (recommended maximum: 80)."
+        );
+        assert_eq!(
+            warnings[2].message,
+            "6 global rules (recommended maximum: 5)."
+        );
+    }
 
     #[test]
     fn frontmatter_closes_only_on_a_standalone_delimiter() {
@@ -365,7 +477,7 @@ mod tests {
         assert_eq!(rules[1].summary, "Heading");
         assert_eq!(rules[2].id, "sub:c");
         assert_eq!(rules[3].summary, "Fallback");
-        let report = check(repo.path()).unwrap();
+        let report = check(repo.path(), false).unwrap();
         assert_eq!(report.checked, 4);
         assert_eq!(report.issues.len(), 6);
         assert!(report.issues[0].message.contains(".keel/rules/a.md"));

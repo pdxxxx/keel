@@ -26,7 +26,9 @@ fn tools() -> Value {
             "git": {"type": "boolean", "description": "If true, include current git changed files."},
             "includeGlobal": {"type": "boolean", "description": "Include global rules with no path filter (default true)."}
         }), &[]),
-        tool("keel_rules_check", "Validate frontmatter, IDs, and severities of all .keel/rules/ files.", json!({}), &[]),
+        tool("keel_rules_check", "Validate frontmatter, IDs, and severities of all .keel/rules/ files.", json!({
+            "stale": {"type":"boolean", "description":"Check unmatched paths and rule hygiene."}
+        }), &[]),
         tool("keel_task_list", "List lightweight task specs under .keel/tasks/.", json!({
             "status": {"type": "string", "enum": ["open", "done"]}, "includeArchived": {"type": "boolean"}
         }), &[]),
@@ -36,7 +38,8 @@ fn tools() -> Value {
         tool("keel_task_show", "Read a task's metadata and living spec.md contents.", json!({"id": {"type": "string"}}), &["id"]),
         tool("keel_verify", "Run configured deterministic verification gates from .keel/config.yaml.", json!({
             "gates": {"type": "array", "items": {"type": "string"}, "description": "Optional subset of gate names to run."},
-            "failFast": {"type": "boolean"}
+            "failFast": {"type": "boolean"},
+            "git": {"type":"boolean", "description":"Filter by uncommitted changes unless gate names are supplied."}
         }), &[]),
         tool("keel_mem_search", "Search across local AI coding transcripts and repository Keel task/rule artifacts.", json!({
             "query": {"type": "string"}, "source": {"type": "string"}, "limit": {"type": "number"}
@@ -103,7 +106,7 @@ fn call(root: &Path, name: &str, args: &Value) -> Result<Value> {
             )
         }
         "keel_rules_check" => {
-            let report = rules::check(root)?;
+            let report = rules::check(root, args["stale"] == true)?;
             payload(&report, !report.valid)
         }
         "keel_task_list" => {
@@ -121,7 +124,12 @@ fn call(root: &Path, name: &str, args: &Value) -> Result<Value> {
         ),
         "keel_task_show" => payload(tasks::show(root, required(args, "id")?)?, false),
         "keel_verify" => {
-            let report = verify::run(root, &strings(args, "gates"), args["failFast"] == true)?;
+            let report = verify::run(
+                root,
+                &strings(args, "gates"),
+                args["failFast"] == true,
+                args["git"] == true,
+            )?;
             payload(&report, !report.passed)
         }
         "keel_mem_search" => payload(

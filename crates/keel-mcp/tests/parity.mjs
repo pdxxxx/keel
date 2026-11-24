@@ -35,9 +35,9 @@ function call(name, args = {}) { return { method: 'tools/call', params: { name, 
 
 function comparable(frame, request) {
   if (request.method === 'initialize') {
-    assert.equal(frame.result.serverInfo.version, '1.0.0');
+    assert.equal(frame.result.serverInfo.version, '1.1.0');
     assert.ok(['keel', 'keel-mcp'].includes(frame.result.serverInfo.name));
-    return { ...frame, result: { ...frame.result, serverInfo: { version: '1.0.0' } } };
+    return { ...frame, result: { ...frame.result, serverInfo: { version: '1.1.0' } } };
   }
   if (request.params?.name === 'keel_verify') {
     const text = frame.result.content[0].text;
@@ -73,6 +73,73 @@ function create(program) {
   assert.equal(record.createdAt, record.updatedAt);
   assert.match(record.createdAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
   return { record, spec, meta };
+}
+
+function git(...args) {
+  const result = spawnSync('git', ['-c', 'user.name=Keel Test', '-c', 'user.email=fixture@example.invalid', ...args], { cwd: root, env, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+}
+
+function brownfieldParity() {
+  const data = (frame) => JSON.parse(frame.result.content[0].text);
+  const normalCheck = call('keel_rules_check');
+  const staleCheck = call('keel_rules_check', { stale: true });
+  put(path.join(root, '.keel/rules/z.md'), '---\nid: z\nsummary: Global\n---\n');
+  put(path.join(root, '.keel/rules/nested/fallback.md'), '---\nid: fallback\nsummary: Global\n---\n');
+  put(path.join(root, 'lib/文.rs'), 'example');
+  put(path.join(root, 'lib/{a,b}[x]'), 'literal');
+  const [clean] = compare([staleCheck]);
+  assert.deepEqual(data(clean), { valid: true, checked: 6, issues: [], warnings: [] });
+  put(path.join(root, '.keel/rules/orphan.md'), '---\nid: orphan\nsummary: Old scope\npaths: [missing/**, api/target/**]\n---\n');
+  put(path.join(root, 'api/target/generated'), 'not a source file');
+  put(path.join(root, '.keel/rules/oversize.md'), '---\nid: oversize\nsummary: Long\n---\n' + 'line\n'.repeat(77));
+  const [legacy, disabled, stale] = compare([normalCheck, call('keel_rules_check', { stale: false }), staleCheck]);
+  assert.deepEqual(data(legacy), { valid: true, checked: 8, issues: [] });
+  assert.deepEqual(data(disabled), data(legacy));
+  assert.equal(stale.result.isError, undefined);
+  assert.deepEqual(data(stale).warnings, [
+    { file: '.keel/rules/orphan.md', message: 'Path glob `missing/**` matches no repository files.' },
+    { file: '.keel/rules/orphan.md', message: 'Path glob `api/target/**` matches no repository files.' },
+    { file: '.keel/rules/oversize.md', message: 'Rule has 81 lines (recommended maximum: 80).' },
+    { file: '.keel/rules', message: '6 global rules (recommended maximum: 5).' },
+  ]);
+
+  const gates = [
+    { name: 'api', command: 'echo api', paths: ['./packages\\api\\**'] },
+    { name: 'ui', command: 'echo ui', paths: ['packages/ui/**'] },
+    { name: 'global', command: 'echo global' }, { name: 'empty', command: 'echo empty', paths: [] },
+  ];
+  const config = path.join(root, '.keel/config.yaml');
+  put(config, JSON.stringify({ verify: { gates } }));
+  git('init', '-q'); git('add', '-A');
+  git('update-ref', 'HEAD', git('commit-tree', git('write-tree'), '-m', 'baseline fixture'));
+  const verify = (args) => call('keel_verify', args);
+  const names = (frame) => data(frame).gates.map(gate => gate.name);
+  const [cleanTree, emptyNames, full, named, missing] = compare([
+    verify({ git: true }), verify({ git: true, gates: [] }), verify({}), verify({ git: true, gates: ['ui'] }), verify({ git: true, gates: ['absent'] }),
+  ]);
+  assert.deepEqual(names(cleanTree), ['global', 'empty']);
+  assert.deepEqual(data(cleanTree).skipped, ['api', 'ui']);
+  assert.deepEqual(names(emptyNames), names(cleanTree));
+  assert.deepEqual(names(full), ['api', 'ui', 'global', 'empty']);
+  assert.equal(data(full).skipped, undefined);
+  assert.deepEqual(names(named), ['ui']);
+  assert.equal(data(named).skipped, undefined);
+  assert.equal(missing.result.isError, true);
+  put(config, JSON.stringify({ verify: { gates: gates.slice(0, 2) } }));
+  const [none] = compare([verify({ git: true })]);
+  assert.deepEqual(data(none), { passed: true, gates: [], skipped: ['api', 'ui'] });
+  put(config, JSON.stringify({ verify: { gates } }));
+  put(path.join(root, 'packages/api/非 ASCII.txt'), 'untracked');
+  const [api] = compare([verify({ git: true })]);
+  assert.deepEqual(names(api), ['api', 'global', 'empty']);
+  assert.deepEqual(data(api).skipped, ['ui']);
+  put(path.join(root, 'packages/ui/style.css'), 'staged');
+  git('add', 'packages/ui/style.css');
+  const [both] = compare([verify({ git: true })]);
+  assert.deepEqual(names(both), names(full));
+  assert.deepEqual(data(both).skipped, []);
 }
 
 try {
@@ -146,7 +213,8 @@ try {
   assert.deepEqual({ ...nativeTask.record, createdAt: nodeTask.record.createdAt, updatedAt: nodeTask.record.updatedAt }, nodeTask.record);
   assert.equal(nativeTask.spec, nodeTask.spec);
   assert.equal(nativeTask.meta.replaceAll(nativeTask.record.createdAt, nodeTask.record.createdAt), nodeTask.meta);
-  console.log(`Passed ${count} stdio response comparisons and bidirectional task-file interchange (Keel CLI 1.0.0).`);
+  brownfieldParity();
+  console.log(`Passed ${count} stdio response comparisons and bidirectional task-file interchange (Keel CLI 1.1.0).`);
 } finally {
   assert.equal(path.dirname(sandbox), path.resolve(os.tmpdir()));
   assert.ok(path.basename(sandbox).startsWith('keel-native-parity-'));

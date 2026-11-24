@@ -32,7 +32,7 @@ describe("MCP server protocol", () => {
 
     const initRes = handleMcpRequest(root, { id: 1, method: "initialize" });
     expect(initRes?.result).toMatchObject({
-      serverInfo: { name: "keel", version: "1.0.0" },
+      serverInfo: { name: "keel", version: "1.1.0" },
     });
 
     const listRes = handleMcpRequest(root, { id: 2, method: "tools/list" });

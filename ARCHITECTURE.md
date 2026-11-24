@@ -11,13 +11,14 @@ Because of that, Keel intentionally avoids:
 - Custom sub-agent definitions or dispatch rules.
 - Vendor-specific `PreToolUse` / `UserPromptSubmit` hooks.
 - Python helper scripts inside user repositories (the CLI is Node.js >= 20; the optional native MCP server is Rust).
+- Built-in LLM API dependencies inside the CLI.
 - Requiring a task folder for small edits.
 
-Everything Keel does lives in plain files under `.keel/`, a short managed block in `AGENTS.md`, four skill files in `.agents/skills/`, and stateless read/write commands.
+Everything Keel does lives in plain files under `.keel/`, a short managed block in `AGENTS.md`, five skill files in `.agents/skills/`, and stateless read/write commands.
 
 ## Code layout
 
-- `src/core/`: core logic (`init`, `config`, `rules`, `glob`, `git`, `tasks`, `verify`, `mem`, `ablate`, `mcp`).
+- `src/core/`: core logic (`init`, `config`, `rules`, `glob`, `git`, `tasks`, `verify`, `hotspots`, `mem`, `migrate`, `ablate`, `snapshot`, `mcp`).
 - `src/cli.ts` & `bin/keel.js`: CLI wrapper over `src/core/`.
 - `src/templates/assets.ts`: templates written by `keel init`.
 - `crates/keel-mcp/`: standalone Rust implementation of the stdio MCP server. Tested against the Node implementation via `crates/keel-mcp/tests/parity.mjs`.
@@ -45,7 +46,7 @@ Concurrent tab refreshes previously caused false-positive token revocation...
 - Frontmatter must start with `---` on line 1 and close with a standalone `---` line.
 - `.keel/rules/index.md` is ignored by `list` and `check` unless it declares an explicit `id` in frontmatter.
 
-`keel rules match` returns only the metadata index (`id`, `file`, `summary`, `severity`, `paths`, `global`) so an agent can open only the files that actually apply.
+`keel rules match` returns only the metadata index (`id`, `file`, `summary`, `severity`, `paths`, `global`) so an agent can open only the files that actually apply. `keel rules check --stale` additionally flags path globs matching zero repo files, rules longer than 80 lines, and repositories with more than 5 global rules (`--strict` fails on warnings).
 
 ### Tasks (`.keel/tasks/<YYYY-MM-DD>-<slug>/`)
 
@@ -63,15 +64,21 @@ Each task folder holds:
 version: 1
 verify:
   gates:
+    - name: api-test
+      command: pnpm --filter api test
+      paths:
+        - packages/api/**
     - name: typecheck
       command: pnpm typecheck
-    - name: test
-      command: pnpm test
 memory:
   sources: []
 ```
 
-`keel verify` runs gates sequentially in the configured order, captures stdout/stderr, exit code, and elapsed milliseconds, and exits non-zero if any gate fails.
+`keel verify` runs gates sequentially in the configured order, captures stdout/stderr, exit code, and elapsed milliseconds, and exits non-zero if any gate fails. When `--git`, `--staged`, or `--base <ref>` is passed (or `git: true` over MCP) without explicit `--gate` names, only global gates (no `paths`) and gates whose `paths` match changed files are executed; skipped gate names are reported in `skipped`.
+
+### Hotspots (`src/core/hotspots.ts`)
+
+`keel hotspots` reads recent commits from `git log`, skips deleted files, and ranks existing paths by `fixTouches * 3 + touches` so brownfield repos can prioritize which areas need rules or tests first.
 
 ### Memory (`src/core/mem.ts`, `crates/keel-mcp/src/mem.rs`)
 
@@ -85,11 +92,9 @@ Read-only scan across:
 
 Malformed JSONL lines and unreadable directories are skipped silently. Search splits the query on whitespace, scores each turn by term coverage plus capped occurrence count, and returns top hits with short snippets.
 
-### Ablation (`src/core/ablate.ts`)
+### Snapshots, ablation, and migration (`src/core/snapshot.ts`, `ablate.ts`, `migrate.ts`)
 
-`keel ablate` backs up `.keel/`, `.agents/skills/keel-*`, and the managed `AGENTS.md` block to `~/.keel-ablate/<repo-hash>/` (or `--state-dir`), verifies backup SHA-256 hashes before mutating the working tree, and records post-ablation hashes in `manifest.json`. Any content outside `<!-- KEEL:START --> ... <!-- KEEL:END -->` in `AGENTS.md` is left intact.
-
-`keel restore` verifies that none of the ablated paths changed in the meantime before restoring anything, unless `--force` is passed.
+`keel ablate` and `keel migrate cleanup` share the same external SHA-256 snapshot engine (`~/.keel-ablate/<repo-hash>/` and `~/.keel-migrate/<repo-hash>/`). Every target file is backed up and hash-verified before mutating the working tree, and `restore` / `migrate rollback` verify all paths for post-operation conflicts before writing anything back (unless `--force` is passed). Managed blocks in `AGENTS.md` are stripped without disturbing surrounding user text.
 
 ### MCP server (`src/core/mcp.ts`, `crates/keel-mcp/`)
 

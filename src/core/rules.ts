@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
-import { matchGlob } from "./glob.js";
+import { globPaths, matchGlob, matchesAnyPath } from "./glob.js";
 import { keelPath, RULES_DIR, toPosixPath } from "./paths.js";
 import type {
   RuleEntry,
@@ -32,7 +32,7 @@ function walkMarkdownFiles(dir: string): string[] {
   return results.sort();
 }
 
-function parseFrontmatter(content: string): {
+export function parseFrontmatter(content: string): {
   hasFrontmatter: boolean;
   data: Record<string, unknown>;
   body: string;
@@ -105,13 +105,7 @@ export function listRules(repoRoot: string): RuleEntry[] {
       ? (rawSeverity as RuleSeverity)
       : "guideline";
 
-    const paths: string[] = Array.isArray(data.paths)
-      ? data.paths
-          .filter(
-            (p): p is string => typeof p === "string" && p.trim().length > 0,
-          )
-          .map((p) => toPosixPath(p.trim()))
-      : [];
+    const paths = globPaths(data.paths);
 
     entries.push({
       id,
@@ -216,11 +210,31 @@ export function addRule(
   };
 }
 
-export function validateRules(repoRoot: string): RuleValidationReport {
+function workingFiles(root: string): string[] {
+  const excluded = new Set([".git", "node_modules", "target", "dist"]);
+  const files: string[] = [];
+  const pending = [root];
+  while (pending.length) {
+    const dir = pending.pop()!;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.name === ".git") continue;
+      if (entry.isDirectory()) {
+        if (!excluded.has(entry.name)) pending.push(full);
+      } else if (entry.isFile()) files.push(toPosixPath(path.relative(root, full)));
+    }
+  }
+  return files;
+}
+
+export function validateRules(repoRoot: string, options: { stale?: boolean } = {}): RuleValidationReport {
   const rulesRoot = keelPath(repoRoot, RULES_DIR);
   const files = walkMarkdownFiles(rulesRoot);
   const issues: RuleIssue[] = [];
   const seenIds = new Map<string, string>();
+  const warnings: RuleIssue[] = [];
+  let targets: string[] | undefined;
+  let globalCount = 0;
   let checked = 0;
 
   for (const fullPath of files) {
@@ -234,6 +248,19 @@ export function validateRules(repoRoot: string): RuleValidationReport {
     }
 
     checked += 1;
+
+    if (options.stale && (relFromRules !== "index.md" || typeof parsed.data.id === "string")) {
+      const lines = content.length === 0 ? 0 : content.split("\n").length - Number(content.endsWith("\n"));
+      if (lines > 80) warnings.push({ file: relFromRepo, message: `Rule has ${lines} lines (recommended maximum: 80).` });
+      const patterns = globPaths(parsed.data.paths);
+      if (!patterns.length) globalCount++;
+      for (const pattern of patterns) {
+        targets ??= workingFiles(repoRoot);
+        if (!matchesAnyPath(pattern, targets)) {
+          warnings.push({ file: relFromRepo, message: `Path glob \`${pattern}\` matches no repository files.` });
+        }
+      }
+    }
 
     if (parsed.parseError) {
       issues.push({
@@ -293,9 +320,11 @@ export function validateRules(repoRoot: string): RuleValidationReport {
     }
   }
 
+  if (globalCount > 5) warnings.push({ file: ".keel/rules", message: `${globalCount} global rules (recommended maximum: 5).` });
   return {
     valid: issues.length === 0,
     checked,
     issues,
+    ...(options.stale ? { warnings } : {}),
   };
 }

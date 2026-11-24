@@ -1,6 +1,6 @@
 # keel-mcp
 
-Keel CLI 1.0.0 的原生 Rust MCP Server。直接读写仓库已有的 `.keel/` 文件；发布后只需一个可执行文件，不需要 Node、Python、数据库或后台服务。它只提供下面九个工具，不接管宿主的调度或 Hook。
+Keel CLI 1.1.0 的原生 Rust MCP Server。直接读写仓库已有的 `.keel/` 文件；发布后只需一个可执行文件，不需要 Node、Python、数据库或后台服务。它只提供下面九个工具，不接管宿主的调度或 Hook。
 
 ## 构建
 
@@ -48,15 +48,15 @@ macOS / Linux 示例（替换成实际绝对路径）：
 | --- | --- |
 | `keel_rules_list` | 枚举 `.keel/rules/**/*.md`，返回 `id`、`file`、`summary`、`severity`、`paths`、`global`。 |
 | `keel_rules_match` | 合并 `paths` 与可选 `git: true` 的未暂存、已暂存和未跟踪文件；`includeGlobal` 默认 `true`。 |
-| `keel_rules_check` | 报告 frontmatter、必填字段、重复 ID、severity、paths 数组类型问题；无效报告带 `isError: true`。 |
+| `keel_rules_check` | 报告 frontmatter、必填字段、重复 ID、severity、paths 数组类型问题；无效报告带 `isError: true`。可选 `stale: true` 检查死路径 glob、超长规则与过多全局规则（返回 `warnings`）。 |
 | `keel_task_list` | 默认只列活动目录，可按 `status: "open" / "done"` 过滤，或用 `includeArchived: true` 包含归档。 |
 | `keel_task_create` | 接受 `title` 与可选 `slug`。使用本地日期生成 ID，重名依次加 `-2`、`-3`；写入 `meta.json` 与 `spec.md`。 |
 | `keel_task_show` | 读取 `id` 对应的元数据与完整 `spec`。归档任务可用 `archive/<id>` 读取。 |
-| `keel_verify` | 执行 `.keel/config.yaml` 中的命令；可选 `gates`、`failFast`。按配置顺序运行，返回退出码、耗时和输出，失败设置 `isError: true`。 |
+| `keel_verify` | 执行 `.keel/config.yaml` 中的命令；可选 `gates`、`git: true`（按 `gates[].paths` 增量筛选）、`failFast`。按配置顺序运行，返回退出码、耗时和输出，失败设置 `isError: true`。 |
 | `keel_mem_search` | 按 `query` 检索，支持 `source` 和 `limit`（默认 15），每条返回 `sessionId`、角色、分数、片段及可选时间戳。 |
 | `keel_mem_sessions` | 支持 `source` 和 `limit`（默认 20），按文件最后修改时间从新到旧返回摘要。 |
 
-协议为 `2024-11-05`，传输为 UTF-8 换行分隔的 JSON-RPC 2.0。握手名称为 `keel-mcp`，版本为 `1.0.0`。`stdout` 只写协议消息，通知不回复。工具结果位于 `result.content[0].text`；结构化结果是这个字符串中的 JSON，不另设数据字段。门禁的 stdout/stderr 只作为 `output` 数据返回。Windows 使用 `cmd.exe /D /S /C`，Unix 使用 `sh -c`。**仅对可信仓库启用验证**：命令以当前用户的权限运行。
+协议为 `2024-11-05`，传输为 UTF-8 换行分隔的 JSON-RPC 2.0。握手名称为 `keel-mcp`，版本为 `1.1.0`。`stdout` 只写协议消息，通知不回复。工具结果位于 `result.content[0].text`；结构化结果是这个字符串中的 JSON，不另设数据字段。门禁的 stdout/stderr 只作为 `output` 数据返回。Windows 使用 `cmd.exe /D /S /C`，Unix 使用 `sh -c`。**仅对可信仓库启用验证**：命令以当前用户的权限运行。
 
 规则使用 Keel 的 `*`、`**`、`**/` 和 `?`，不是 shell 的括号或花括号展开。对外展示的路径使用 `/`。任务时间戳是 UTC、精确到毫秒；日期前缀取本机本地日期。
 

@@ -72,7 +72,7 @@ export const KEEL_MCP_TOOLS: McpToolDefinition[] = [
     description: "Validate frontmatter, IDs, and severities of all .keel/rules/ files.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: { stale: { type: "boolean", description: "Check unmatched paths and rule hygiene." } },
       additionalProperties: false,
     },
   },
@@ -132,6 +132,7 @@ export const KEEL_MCP_TOOLS: McpToolDefinition[] = [
         failFast: {
           type: "boolean",
         },
+        git: { type: "boolean", description: "Filter by uncommitted changes unless gate names are supplied." },
       },
       additionalProperties: false,
     },
@@ -204,7 +205,7 @@ function dispatchToolCall(
       }
 
       case "keel_rules_check": {
-        const report = validateRules(repoRoot);
+        const report = validateRules(repoRoot, { stale: args.stale === true });
         return toolTextResult(report, !report.valid);
       }
 
@@ -244,6 +245,7 @@ function dispatchToolCall(
           : undefined;
         const report = runVerify(repoRoot, {
           gateNames: gates,
+          git: args.git === true,
           failFast: args.failFast === true,
         });
         return toolTextResult(report, !report.passed);
