@@ -1,107 +1,110 @@
 # 命令参考
 
-所有命令均支持 `--json` 输出。
+全局选项（适用于所有命令）：
+
+- `-C, --root <PATH>`：指定目标仓库或其内部任意子目录
+- `--json`：输出机器可读 JSON
 
 ## `keel init`
 
-在当前目录初始化 Keel。
-
 ```sh
-keel init [-f | --force] [--no-skills] [--no-detect] [--json]
+keel init [-f | --force] [--reset-config] [--no-skills] [--no-detect]
 ```
 
-- 自动识别 `package.json`、`Cargo.toml`、`go.mod`、`pyproject.toml` 中的常见校验脚本并写入 `.keel/config.yaml`。
-- 幂等写入 `AGENTS.md` 中的 `<!-- KEEL:START --> ... <!-- KEEL:END -->` 托管块。
-- 安装 5 个宿主无关标准 Skill：`keel-plan`、`keel-verify`、`keel-distill`、`keel-mem`、`keel-migrate`。
+创建 `.keel/`、自动探测常见校验脚本（`package.json`、`Cargo.toml`、`go.mod`、`pyproject.toml`）、严格成对校验并更新 `AGENTS.md` 托管块，以及安装 5 个标准 skills（`keel-plan`、`keel-verify`、`keel-distill`、`keel-mem`、`keel-migrate`）。即使传 `--force`，除非显式 `--reset-config`，不会覆盖已有 `.keel/config.yaml`。
+
+## `keel update`
+
+```sh
+keel update [--dry-run] [--no-skills]
+```
+
+仅刷新 Keel 托管模板（`AGENTS.md` 托管块、`.keel/rules/index.md`、`.agents/skills/keel-*/SKILL.md`），绝不触碰 `.keel/config.yaml`、用户规则或任务。
+
+## `keel doctor`
+
+```sh
+keel doctor
+```
+
+严格校验 `.keel/` 结构与 `.keel/config.yaml`（捕获拼写错误字段、非法类型、空命令与重名门禁），检查 `AGENTS.md` 标记成对完整性、检查 `git` 可用性，并运行 `rules check --stale`。有错误时返回非零退出码。
 
 ## `keel rules`
 
-管理 `.keel/rules/` 下的按路径 Markdown 规则。
-
 ```sh
-keel rules list [--json]
-keel rules match [paths...] [--git] [--staged] [--base <ref>] [--no-global] [--json]
-keel rules add <id> --summary <text> [--severity invariant|guideline|adr] [--paths <glob...>] [-f] [--json]
-keel rules check [--stale] [--strict] [--json]
+keel rules list
+keel rules match [paths...] [--git] [--staged] [--base <ref>] [--no-global]
+keel rules add <id> --summary <text> [--severity invariant|guideline|adr] [--paths <glob...>] [-f]
+keel rules check [--stale] [--strict]
 ```
 
-- `match` 传入 `--git`、`--staged` 或 `--base <ref>` 时会自动合并 Git 变更文件路径进行匹配。
-- `check --stale` 会检查匹配不到任何仓库文件的死 glob、超过 80 行的过长规则以及超过 5 条的全局规则；`--strict` 会在出现告警时也返回非零退出码。
+`check --stale` 告警死路径 glob、超过 80 行的过长规则与超过 5 条的全局规则（`--strict` 遇告警即返回非零退出码）。
 
 ## `keel task`
 
-管理 `.keel/tasks/` 下的可选单文档任务。
-
 ```sh
-keel task create <title> [--slug <slug>] [--json]
-keel task list [--all] [--status open|done] [--json]
-keel task show <id> [--json]
-keel task done <id> [--json]
-keel task reopen <id> [--json]
-keel task archive <id> [--json]
+keel task create <title> [--slug <slug>]
+keel task list [--all] [--status open|done]
+keel task show <id>
+keel task done <id>
+keel task reopen <id>
+keel task archive <id>
 ```
 
-每个任务包含 `meta.json` 和单份活文档 `spec.md`（以及可选的 `research/` 调研目录）。归档任务移动到 `.keel/tasks/archive/<id>/`，可用 `keel task show archive/<id>` 读取。
+归档任务位于 `.keel/tasks/archive/<id>/`，可用 `keel task show archive/<id>` 读取。
 
 ## `keel verify`
 
-按顺序运行 `.keel/config.yaml` 中配置的确定性检查门禁。
-
 ```sh
-keel verify [-g | --gate <name...>] [--git] [--staged] [--base <ref>] [--fail-fast] [--json]
+keel verify [-g | --gate <name...>] [--git] [--staged] [--base <ref>] [--fail-fast]
 ```
 
-- 不带参数时运行全部门禁。
-- 带 `--git`、`--staged` 或 `--base <ref>`（且未显式指定 `--gate`）时，仅运行全局门禁和 `paths` 命中变更文件的门禁。
+按配置顺序运行门禁。支持 `paths` 增量筛选（`--git` / `--staged` / `--base`）、单门禁 `timeoutMs`（默认 120s，超时终止进程树并返回 `exitCode: 124`）及 `maxOutputChars`（默认 16,000，保留末尾日志）。
 
 ## `keel hotspots`
 
-按近期提交频率与 bugfix/revert 次数对仓库内现存文件排序。
-
 ```sh
-keel hotspots [--commits <n>] [--limit <n>] [--json]
+keel hotspots [--commits <n>] [--limit <n>]
 ```
 
-默认检查最近 100 次提交并返回 Top 10 现存文件（`score = fixTouches * 3 + touches`），自动跳过已删除文件。
+按近期提交频率与 bugfix/revert 次数对现存文件排名（`score = fixTouches * 3 + touches`），嵌套 monorepo 下同样精准对齐路径。
 
 ## `keel mem`
 
-只读检索 `.keel/` 文档与本地 AI 编程会话日志（Claude Code、Codex、OpenCode 及 `.keel/config.yaml` / `KEEL_MEM_DIRS` 指定的自定义目录）。
-
 ```sh
-keel mem sources [--source <name>] [--json]
-keel mem sessions [--source <name>] [-n | --limit <count>] [--json]
-keel mem search <query> [--source <name>] [-n | --limit <count>] [--json]
-keel mem show <sessionId> [-n | --limit <count>] [--json]
+keel mem sources [--source <name>]
+keel mem sessions [--source <name>] [--scope project|all] [-n | --limit <count>]
+keel mem search <query> [--source <name>] [--scope project|all] [-n | --limit <count>]
+keel mem show <sessionId> [-n | --limit <count>]
 ```
+
+原地流式只读检索 `keel`、`claude`、`codex`、`opencode`、`antigravity`、`gemini` 与 `custom` 共 7 类本地数据源。
 
 ## `keel migrate`
 
-盘点并安全清理冲突的旧 AI 框架配置（Trellis、`.cursorrules`、`CLAUDE.md`、Copilot、Windsurf、Spec-Kit、BMAD）。
-
 ```sh
-keel migrate scan [--json]
-keel migrate plan [--json]
-keel migrate cleanup [--dry-run] [--state-dir <dir>] [--json]
-keel migrate rollback [--dry-run] [--force] [--state-dir <dir>] [--json]
+keel migrate scan
+keel migrate plan
+keel migrate cleanup [--dry-run] [--state-dir <dir>]
+keel migrate rollback [--dry-run] [--force] [--state-dir <dir>]
 ```
 
-`cleanup` 修改仓库前会先做外部 SHA-256 备份，`rollback` 恢复前会做全路径冲突检测。
+盘点并安全清理冲突旧框架配置（完整覆盖 Trellis 的 `.trellis/`、`AGENTS.md`、`CLAUDE.md`、`.agents/skills/trellis-*`、`.claude/`、`.codex/`、`.cursor/`、`.gemini/`，以及 `.cursorrules`、Windsurf、Spec-Kit、BMAD），外部 SHA-256 备份保护、支持无损回滚。
 
 ## `keel ablate` 与 `keel restore`
 
-临时将所有 Keel 文件（`.keel/`、`.agents/skills/keel-*` 及 `AGENTS.md` 中的托管块）移入外部校验快照以做 A/B 对比，随后逐字节无损恢复。
-
 ```sh
-keel ablate [--dry-run] [--state-dir <dir>] [--json]
-keel ablate status [--state-dir <dir>] [--json]
-keel restore [--dry-run] [--force] [--state-dir <dir>] [--json]
+keel ablate [--dry-run] [--state-dir <dir>]
+keel ablate status [--state-dir <dir>]
+keel restore [--dry-run] [--force] [--state-dir <dir>]
 ```
+
+将 Keel 相关文件临时移入外部 SHA-256 校验快照以做 A/B 对比，随后逐字节无损恢复。
 
 ## `keel mcp`
 
-启动内置 Node.js 版 stdio MCP 服务。
-
 ```sh
-keel mcp
+keel mcp [--root <path>] [--lock-root]
 ```
+
+启动内置 stdio JSON-RPC 2.0 MCP 服务，暴露全部 13 个工具。

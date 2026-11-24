@@ -1,108 +1,110 @@
 # Commands Reference
 
-Every command supports `--json` for machine-readable output.
+Global flags available on every command:
+
+- `-C, --root <PATH>` — target repository or any directory inside it
+- `--json` — print machine-readable JSON
 
 ## `keel init`
 
-Initialize Keel in the current directory.
-
 ```sh
-keel init [-f | --force] [--no-skills] [--no-detect] [--json]
+keel init [-f | --force] [--reset-config] [--no-skills] [--no-detect]
 ```
 
-- Auto-detects common verification scripts from `package.json`, `Cargo.toml`, `go.mod`, or `pyproject.toml`.
-- Upserts a short managed block in `AGENTS.md` between `<!-- KEEL:START -->` and `<!-- KEEL:END -->`.
-- Installs five harness-agnostic skills under `.agents/skills/`: `keel-plan`, `keel-verify`, `keel-distill`, `keel-mem`, `keel-migrate`.
+Creates `.keel/`, auto-detects verification scripts (`package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`), upserts the `AGENTS.md` managed block (with strict paired-marker checks), and installs 5 skills (`keel-plan`, `keel-verify`, `keel-distill`, `keel-mem`, `keel-migrate`). Even with `--force`, an existing `.keel/config.yaml` is preserved unless `--reset-config` is passed.
+
+## `keel update`
+
+```sh
+keel update [--dry-run] [--no-skills]
+```
+
+Refreshes only Keel-managed guidance files (`AGENTS.md` block, `.keel/rules/index.md`, `.agents/skills/keel-*/SKILL.md`). Never modifies `.keel/config.yaml`, user rules, or tasks.
+
+## `keel doctor`
+
+```sh
+keel doctor
+```
+
+Validates `.keel/` structure, parses `.keel/config.yaml` strictly (reporting unknown keys, bad types, empty commands, and duplicate gate names), checks `AGENTS.md` marker pairing, confirms `git` is available on `PATH`, and runs `rules check --stale`. Exits non-zero on errors.
 
 ## `keel rules`
 
-Manage path-scoped Markdown rules under `.keel/rules/`.
-
 ```sh
-keel rules list [--json]
-keel rules match [paths...] [--git] [--staged] [--base <ref>] [--no-global] [--json]
-keel rules add <id> --summary <text> [--severity invariant|guideline|adr] [--paths <glob...>] [-f] [--json]
-keel rules check [--stale] [--strict] [--json]
+keel rules list
+keel rules match [paths...] [--git] [--staged] [--base <ref>] [--no-global]
+keel rules add <id> --summary <text> [--severity invariant|guideline|adr] [--paths <glob...>] [-f]
+keel rules check [--stale] [--strict]
 ```
 
-- `match` combines explicit paths with changed files from git when `--git`, `--staged`, or `--base <ref>` is set.
-- `check --stale` flags path globs matching zero files in the repository, rules over 80 lines, and repositories with more than 5 global rules. `--strict` exits non-zero on warnings as well as schema errors.
+`check --stale` flags path globs matching zero files in the repo, rules over 80 lines, and more than 5 global rules (`--strict` exits non-zero on warnings).
 
 ## `keel task`
 
-Optional lightweight task specs under `.keel/tasks/`.
-
 ```sh
-keel task create <title> [--slug <slug>] [--json]
-keel task list [--all] [--status open|done] [--json]
-keel task show <id> [--json]
-keel task done <id> [--json]
-keel task reopen <id> [--json]
-keel task archive <id> [--json]
+keel task create <title> [--slug <slug>]
+keel task list [--all] [--status open|done]
+keel task show <id>
+keel task done <id>
+keel task reopen <id>
+keel task archive <id>
 ```
 
-Each task contains a `meta.json` and a single living `spec.md` (plus an optional `research/` directory for notes). Archived tasks move to `.keel/tasks/archive/<id>/` and can still be read via `keel task show archive/<id>`.
+Archived tasks move to `.keel/tasks/archive/<id>/` and remain readable via `keel task show archive/<id>`.
 
 ## `keel verify`
 
-Run deterministic verification gates defined in `.keel/config.yaml`.
-
 ```sh
-keel verify [-g | --gate <name...>] [--git] [--staged] [--base <ref>] [--fail-fast] [--json]
+keel verify [-g | --gate <name...>] [--git] [--staged] [--base <ref>] [--fail-fast]
 ```
 
-- Without flags, runs every configured gate in order.
-- With `--git`, `--staged`, or `--base <ref>` (and no explicit `--gate`), runs global gates (no `paths`) plus gates whose `paths` globs match changed files.
-- Exits non-zero if any executed gate fails.
+Runs configured gates in order. Supports `paths` incremental filtering (`--git`/`--staged`/`--base`), per-gate `timeoutMs` (default 120s, terminates process tree on timeout with `exitCode: 124`), and `maxOutputChars` (default 16,000, keeps tail).
 
 ## `keel hotspots`
 
-Rank existing repository files by recent commit churn and bugfix/revert frequency.
-
 ```sh
-keel hotspots [--commits <n>] [--limit <n>] [--json]
+keel hotspots [--commits <n>] [--limit <n>]
 ```
 
-Defaults to inspecting the last 100 commits and returning the top 10 existing files (`score = fixTouches * 3 + touches`), skipping deleted files.
+Ranks existing files by recent commit churn and bugfix/revert frequency (`score = fixTouches * 3 + touches`), aligned cleanly even in nested monorepos.
 
 ## `keel mem`
 
-Read-only search across `.keel/` files and local AI session transcripts (Claude Code, Codex, OpenCode, and custom directories configured in `.keel/config.yaml` or `KEEL_MEM_DIRS`).
-
 ```sh
-keel mem sources [--source <name>] [--json]
-keel mem sessions [--source <name>] [-n | --limit <count>] [--json]
-keel mem search <query> [--source <name>] [-n | --limit <count>] [--json]
-keel mem show <sessionId> [-n | --limit <count>] [--json]
+keel mem sources [--source <name>]
+keel mem sessions [--source <name>] [--scope project|all] [-n | --limit <count>]
+keel mem search <query> [--source <name>] [--scope project|all] [-n | --limit <count>]
+keel mem show <sessionId> [-n | --limit <count>]
 ```
+
+Streaming read-only search across `keel`, `claude`, `codex`, `opencode`, `antigravity`, `gemini`, and `custom` directories.
 
 ## `keel migrate`
 
-Inspect and safely retire conflicting legacy AI setups (Trellis, `.cursorrules`, `CLAUDE.md`, Copilot instructions, Windsurf, Spec-Kit, BMAD).
-
 ```sh
-keel migrate scan [--json]
-keel migrate plan [--json]
-keel migrate cleanup [--dry-run] [--state-dir <dir>] [--json]
-keel migrate rollback [--dry-run] [--force] [--state-dir <dir>] [--json]
+keel migrate scan
+keel migrate plan
+keel migrate cleanup [--dry-run] [--state-dir <dir>]
+keel migrate rollback [--dry-run] [--force] [--state-dir <dir>]
 ```
 
-`cleanup` writes a SHA-256 verified external backup before modifying the repository. `rollback` checks all paths for conflicts before restoring.
+Detects and safely retires conflicting legacy setups (Trellis across `.trellis/`, `AGENTS.md`, `CLAUDE.md`, `.agents/skills/trellis-*`, `.claude/`, `.codex/`, `.cursor/`, `.gemini/`; plus `.cursorrules`, Windsurf, Spec-Kit, BMAD) with SHA-256 external backup and conflict-safe rollback.
 
 ## `keel ablate` & `keel restore`
 
-Temporarily remove all Keel surfaces (`.keel/`, `.agents/skills/keel-*`, and the managed `AGENTS.md` block) into a verified external snapshot for A/B testing, then restore byte-for-byte.
-
 ```sh
-keel ablate [--dry-run] [--state-dir <dir>] [--json]
-keel ablate status [--state-dir <dir>] [--json]
-keel restore [--dry-run] [--force] [--state-dir <dir>] [--json]
+keel ablate [--dry-run] [--state-dir <dir>]
+keel ablate status [--state-dir <dir>]
+keel restore [--dry-run] [--force] [--state-dir <dir>]
 ```
+
+Temporarily removes Keel surfaces into a SHA-256 verified external snapshot for A/B benchmarking and restores byte-for-byte.
 
 ## `keel mcp`
 
-Start the built-in Node.js stdio MCP server for the current repository.
-
 ```sh
-keel mcp
+keel mcp [--root <path>] [--lock-root]
 ```
+
+Starts the stdio JSON-RPC 2.0 MCP server exposing all 13 tools.

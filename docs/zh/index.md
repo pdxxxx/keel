@@ -4,7 +4,7 @@ layout: home
 hero:
   name: keel
   text: 面向 AI 编程的仓库规则、记忆与校验门禁。
-  tagline: 纯文本存入 .keel/、跨工具检索本地会话、按路径增量校验，以及约 2 MiB 的原生 Rust MCP 服务。不接管调度，不绑死工具。
+  tagline: 单个 3.6 MiB 纯 Rust 可执行文件搞定全部 CLI 与 13 个 stdio MCP 工具。纯文本存入 .keel/、7 源流式会话检索、确定性门禁，零调度锁定。
   image:
     src: /keel.png
     alt: keel
@@ -13,41 +13,41 @@ hero:
       text: 快速开始
       link: /zh/guide/getting-started
     - theme: alt
-      text: 原生 Rust MCP
+      text: MCP 服务
       link: /zh/guide/mcp
     - theme: alt
       text: GitHub
       link: https://github.com/pdxxxx/keel
 
 features:
-  - title: 按路径按需拉取规则
-    details: 把暗坑与不变量以 Markdown 存在 .keel/rules/，只拉取命中当前 git diff 的规则；用 keel rules check --stale 清理失效 glob。
-  - title: 确定性增量验证门禁
-    details: 用 .keel/config.yaml 运行真实的 typecheck、lint、test 命令；为门禁加上 paths 后，keel verify --git 在大仓库里也能秒跑。
-  - title: 跨工具本地会话记忆
-    details: 直接检索 Claude Code、Codex、OpenCode、自定义目录 JSONL 会话以及 .keel/ 文档，不再手动写流水账日记。
-  - title: 零调度锁定
-    details: 不强制子 Agent 拓扑，不装宿主私有 PreToolUse Hook，零 Python 脚本。把执行与并行调度权留给现代模型和底座。
+  - title: 纯 Rust 单二进制
+    details: 一个可执行文件同时承载全部 CLI 与 13 个 stdio MCP 工具，不依赖 Node 或 Python 运行时；支持 npm、Cargo 或 GitHub Releases 安装。
+  - title: 按路径规则与安全升级
+    details: 规则按路径存在 .keel/rules/，只拉取命中当前 git diff 的项；keel doctor 严格排查配置错误，keel update 升级模板不碰用户配置。
+  - title: 原生支持多仓库与 MCP 聚合器
+    details: 单个常驻 keel mcp 进程通过按次传入 root 安全服务多个仓库，自带无家目录防误写保护与可选 --lock-root 沙箱锁。
+  - title: 7 源流式跨工具记忆
+    details: 原地只读扫描 .keel/、Claude Code、Codex、OpenCode、Antigravity、Gemini 与自定义目录，支持 --scope project 过滤与当前项目加权。
 ---
 
 <div class="keel-home-section">
 
 <div class="keel-stat-grid">
   <div class="keel-stat-card">
-    <div class="keel-stat-value">~2 MiB</div>
-    <div class="keel-stat-label">单文件 Rust MCP 二进制（无需 Node 运行时）</div>
+    <div class="keel-stat-value">3.6 MiB</div>
+    <div class="keel-stat-label">纯 Rust 单文件二进制（CLI + 13 个 MCP 工具）</div>
   </div>
   <div class="keel-stat-card">
     <div class="keel-stat-value">3.2 ms</div>
-    <div class="keel-stat-label">Windows 实测 stdio MCP 握手中位耗时</div>
+    <div class="keel-stat-label">stdio MCP 握手中位耗时</div>
   </div>
   <div class="keel-stat-card">
-    <div class="keel-stat-value">43 ms</div>
-    <div class="keel-stat-label">检索 98,304 条 JSONL 记录并返回前 15 条</div>
+    <div class="keel-stat-value">7 类来源</div>
+    <div class="keel-stat-label">零数据库流式只读会话检索</div>
   </div>
   <div class="keel-stat-card">
-    <div class="keel-stat-value">61 项</div>
-    <div class="keel-stat-label">CI 双平台 Node 与 Rust stdio 响应对照</div>
+    <div class="keel-stat-value">5 平台</div>
+    <div class="keel-stat-label">Linux / macOS / Windows 预编译发布</div>
   </div>
 </div>
 
@@ -56,12 +56,12 @@ features:
 ```sh
 npm install -g @pdxxxx/keel@latest
 
-keel init                                    # 创建 .keel/、AGENTS.md 块与标准 skills
+keel init                                    # 创建 .keel/、AGENTS.md 块与 5 个标准 skills
 keel rules add auth-rotation \               # 记录代码里看不出来的暗坑
   --summary "Rotate refresh tokens atomically" \
   --paths "src/auth/**"
 keel rules match --git                       # 拉取命中当前变更的规则
-keel mem search "refresh token"              # 跨工具检索历史会话与 .keel/ 文档
+keel mem search "refresh token" --scope project
 keel verify --git                            # 运行命中当前变更的检查门禁
 ```
 

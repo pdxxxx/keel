@@ -2,13 +2,13 @@
 version: 1
 verify:
   gates:
-    - name: typecheck
-      command: pnpm typecheck
-    - name: build
-      command: pnpm build
-    - name: rules-check
-      command: node bin/keel.js rules check
-    - name: test
-      command: pnpm test
+    - name: rust-tests
+      command: cargo test --locked
+    - name: clippy
+      command: cargo clippy --all-targets -- -D warnings
+    - name: npm-wrapper
+      command: node --test npm/test.mjs
+    - name: doctor
+      command: cargo run --quiet -- doctor
 memory:
   sources: []

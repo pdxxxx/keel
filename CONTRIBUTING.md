@@ -1,35 +1,29 @@
 # Contributing
 
-## Setup
+## Requirements
 
-Requires Node.js >= 20 and pnpm. If you are touching `crates/keel-mcp`, you also need Rust 1.85+ with `clippy`.
+- Rust 1.85+ with `clippy`
+- Node.js >= 20 (only for running the thin npm wrapper tests in `npm/test.mjs` or previewing `docs/`)
+
+## Local checks
 
 ```sh
-pnpm install
-pnpm build
-pnpm test
+cargo test --locked
+cargo clippy --all-targets -- -D warnings
+cargo build --release --locked
+node --test npm/test.mjs
 ```
 
-## Running checks
-
-Run the repository's own verification gates:
+Or run Keel's own verification gates:
 
 ```sh
-node bin/keel.js verify
-```
-
-If you changed `src/core/mcp.ts` or anything under `crates/keel-mcp/`, also run the Rust tests and parity script:
-
-```sh
-cargo test --locked --manifest-path crates/keel-mcp/Cargo.toml
-cargo clippy --all-targets --manifest-path crates/keel-mcp/Cargo.toml -- -D warnings
-cargo build --release --locked --manifest-path crates/keel-mcp/Cargo.toml
-node crates/keel-mcp/tests/parity.mjs
+cargo run --quiet -- doctor
+cargo run --quiet -- verify
 ```
 
 ## Guidelines
 
 - Keep runtime dependencies minimal and cross-platform (Windows, macOS, Linux).
-- Do not add sub-agent orchestration rules or vendor-specific hook logic.
-- Any change to `.keel/` file formats or MCP tool behavior must stay consistent between TypeScript (`src/core/`) and Rust (`crates/keel-mcp/`) and pass `parity.mjs`.
-- Check `.keel/rules/` with `node bin/keel.js rules match --git` before opening a PR.
+- Do not add sub-agent orchestration rules or vendor hook logic.
+- Keep `stdout` strictly clean for `--json` and `keel mcp` stdio frames (diagnostics go to `stderr`).
+- Check `.keel/rules/` with `cargo run --quiet -- rules match --git` before opening a PR.

@@ -4,7 +4,7 @@ layout: home
 hero:
   name: keel
   text: Engineering rules, memory, and checks for coding agents.
-  tagline: Plain files under .keel/, local session search, deterministic verification gates, and a 2 MiB Rust MCP server. Zero sub-agent lock-in.
+  tagline: One 3.6 MiB Rust binary for CLI and stdio MCP. Plain files under .keel/, streaming 7-source session search, deterministic gates, and zero sub-agent lock-in.
   image:
     src: /keel.png
     alt: keel
@@ -13,41 +13,41 @@ hero:
       text: Get Started
       link: /guide/getting-started
     - theme: alt
-      text: Native Rust MCP
+      text: MCP Server
       link: /guide/mcp
     - theme: alt
       text: GitHub
       link: https://github.com/pdxxxx/keel
 
 features:
-  - title: Scoped Rules, Pulled on Demand
-    details: Keep path-scoped Markdown rules under .keel/rules/ and pull only what matches your git diff. Check dead globs with keel rules check --stale.
-  - title: Deterministic Verification Gates
-    details: Run real typecheck, lint, and test commands from .keel/config.yaml. Scope gates by path globs so keel verify --git stays fast in monorepos.
-  - title: Cross-Tool Session Memory
-    details: Search local Claude Code, Codex, OpenCode, and custom JSONL transcripts together with .keel/ docs. No manual session journals required.
-  - title: Zero Orchestration Lock-In
-    details: No custom sub-agent topologies, no vendor PreToolUse hooks, no Python scripts. Let your coding tool schedule work its own way.
+  - title: Single Rust Binary
+    details: One executable handles both the CLI and all 13 stdio MCP tools. No Node or Python runtime required; install via npm, Cargo, or GitHub Releases.
+  - title: Scoped Rules & Safe Updates
+    details: Keep path-scoped rules under .keel/rules/, pull only what matches your git diff, validate with keel doctor, and refresh templates safely with keel update.
+  - title: Multi-Repo MCP Built-In
+    details: One shared keel mcp process serves multiple repos safely behind MCP aggregators via per-call root, homeless-cwd write guards, and optional --lock-root.
+  - title: Streaming Cross-Tool Memory
+    details: Search .keel/, Claude Code, Codex, OpenCode, Antigravity, Gemini, and custom logs with --scope project filtering and current-repo ranking boost.
 ---
 
 <div class="keel-home-section">
 
 <div class="keel-stat-grid">
   <div class="keel-stat-card">
-    <div class="keel-stat-value">~2 MiB</div>
-    <div class="keel-stat-label">Single-binary Rust MCP server (no Node runtime)</div>
+    <div class="keel-stat-value">3.6 MiB</div>
+    <div class="keel-stat-label">Single pure-Rust binary (CLI + 13 MCP tools)</div>
   </div>
   <div class="keel-stat-card">
     <div class="keel-stat-value">3.2 ms</div>
-    <div class="keel-stat-label">Median stdio MCP handshake on Windows</div>
+    <div class="keel-stat-label">Median stdio MCP handshake</div>
   </div>
   <div class="keel-stat-card">
-    <div class="keel-stat-value">43 ms</div>
-    <div class="keel-stat-label">Search across 98,304 JSONL turns (top 15)</div>
+    <div class="keel-stat-value">7 sources</div>
+    <div class="keel-stat-label">Streaming read-only memory search</div>
   </div>
   <div class="keel-stat-card">
-    <div class="keel-stat-value">61 checks</div>
-    <div class="keel-stat-label">Node & Rust stdio parity suite in CI</div>
+    <div class="keel-stat-value">5 targets</div>
+    <div class="keel-stat-label">Linux, macOS & Windows prebuilt releases</div>
   </div>
 </div>
 
@@ -56,12 +56,12 @@ features:
 ```sh
 npm install -g @pdxxxx/keel@latest
 
-keel init                                    # create .keel/, AGENTS.md block, standard skills
+keel init                                    # create .keel/, AGENTS.md block, 5 skills
 keel rules add auth-rotation \               # record an undiscoverable trap
   --summary "Rotate refresh tokens atomically" \
   --paths "src/auth/**"
 keel rules match --git                       # pull rules matching current diff
-keel mem search "refresh token"              # search local AI transcripts & .keel/ docs
+keel mem search "refresh token" --scope project
 keel verify --git                            # run gates matching current diff
 ```
 

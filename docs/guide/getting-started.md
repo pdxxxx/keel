@@ -1,17 +1,22 @@
 # Getting Started
 
-## Requirements
-
-- **Node.js >= 20** for the CLI (`keel`) and built-in Node MCP server (`keel mcp`).
-- **Rust 1.85+** (optional) only if you want to build the standalone `keel-mcp` binary from source. Prebuilt binaries are attached to [GitHub Releases](https://github.com/pdxxxx/keel/releases).
-
 ## Install
+
+Install via npm (downloads and SHA-256 verifies the prebuilt native Rust binary for your platform):
 
 ```sh
 npm install -g @pdxxxx/keel@latest
 ```
 
-Verify the installation:
+Or build from source with Rust 1.85+:
+
+```sh
+cargo install --git https://github.com/pdxxxx/keel --locked
+```
+
+Prebuilt single binaries for Linux (`x86_64`, `aarch64`), macOS (`arm64`, `x86_64`), and Windows (`x86_64`) are also available on [GitHub Releases](https://github.com/pdxxxx/keel/releases).
+
+Verify:
 
 ```sh
 keel --version
@@ -19,13 +24,11 @@ keel --version
 
 ## Initialize a repository
 
-Run `keel init` at the root of your project:
-
 ```sh
 keel init
 ```
 
-`keel init` writes only plain, git-friendly files:
+This creates:
 
 ```text
 .keel/
@@ -33,43 +36,25 @@ keel init
   rules/
     index.md         # rule format reference
   tasks/             # optional single-file task specs
-AGENTS.md            # short managed block (<!-- KEEL:START --> ... <!-- KEEL:END -->)
+AGENTS.md            # managed block (<!-- KEEL:START --> ... <!-- KEEL:END -->)
 .agents/skills/      # keel-plan, keel-verify, keel-distill, keel-mem, keel-migrate
 ```
 
-If `AGENTS.md` already exists, Keel appends its managed block without modifying your existing content.
+`keel init` preserves user text outside the managed `AGENTS.md` markers and never overwrites an existing `.keel/config.yaml` unless you explicitly pass `--reset-config`.
+
+## Upgrading existing projects
+
+After upgrading the `keel` binary, refresh managed templates in an existing repository safely:
+
+```sh
+keel update
+keel doctor
+```
+
+`keel update` updates only the `AGENTS.md` block, `.keel/rules/index.md`, and `.agents/skills/keel-*` files — it never touches your `.keel/config.yaml`, `.keel/rules/*.md`, or `.keel/tasks/`.
 
 ## Day-to-day usage
 
-### Small edits
-
-Just make the edit. Check `keel rules match --git` (or let your agent call `keel_rules_match` via MCP) to see if any invariant applies, then run `keel verify --git`. No task directory is needed.
-
-### Multi-step or cross-session work
-
-Create a single-file task spec to keep goals, non-goals, and acceptance criteria on disk across chat compactions:
-
-```sh
-keel task create "Refactor session refresh" --slug session-refresh
-```
-
-This creates `.keel/tasks/YYYY-MM-DD-session-refresh/spec.md` and `meta.json`. When finished:
-
-```sh
-keel task archive 2026-11-24-session-refresh
-```
-
-### Capturing lessons
-
-When you fix a non-obvious bug or settle an architectural tradeoff:
-
-1. If it can be checked by a test, linter, or script, add it to `.keel/config.yaml` under `verify.gates`.
-2. Otherwise, add a concise scoped rule:
-
-```sh
-keel rules add no-float-money \
-  --summary "Store monetary amounts as integer minor units" \
-  --paths "src/payments/**"
-```
-
-Keep rules short and scoped with `paths` so agents only see them when touching relevant files.
+- **Small edits**: check `keel rules match --git`, make the edit, run `keel verify --git`. No task folder needed.
+- **Multi-step work**: run `keel task create "Refactor session refresh" --slug session-refresh`, keep goals and acceptance criteria in `spec.md`, and `keel task archive <id>` when done.
+- **Capturing lessons**: promote checks to `.keel/config.yaml` when automatable; otherwise run `keel rules add <id> --summary "..." --paths "..."`.

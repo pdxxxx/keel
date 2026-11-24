@@ -1,6 +1,6 @@
 {
   "name": "@pdxxxx/keel",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Repo rules, task specs, session memory, and verification gates for coding agents.",
   "type": "module",
   "license": "MIT",
@@ -30,19 +30,11 @@
     "access": "public"
   },
   "bin": {
-    "keel": "bin/keel.js"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+    "keel": "npm/bin/keel.js"
   },
   "files": [
-    "bin",
-    "dist",
+    "npm/bin",
+    "npm/install.js",
     "README.md",
     "README_CN.md",
     "ARCHITECTURE.md",
@@ -50,20 +42,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
-    "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "prepublishOnly": "pnpm typecheck && pnpm build && pnpm test"
-  },
-  "dependencies": {
-    "commander": "^13.1.0",
-    "yaml": "^2.7.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.13.0",
-    "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "postinstall": "node npm/install.js",
+    "test:npm": "node --test npm/test.mjs"
   }
 }

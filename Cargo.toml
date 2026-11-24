@@ -1,0 +1,32 @@
+[package]
+name = "keel"
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.89"
+description = "Repository rules, task contracts, local session memory, and deterministic verification over CLI and MCP"
+license = "MIT"
+repository = "https://github.com/pdxxxx/keel"
+include = ["/src/**/*.rs", "/tests/**/*.rs", "/.agents/skills/keel-*/SKILL.md", "/.keel/rules/index.md", "/Cargo.*", "/LICENSE"]
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4", features = ["derive"] }
+command-group = "5.0.1"
+percent-encoding = "2"
+regex = { version = "1", default-features = false, features = ["std", "perf"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+sha2 = "0.10"
+tempfile = "3"
+url = "2.5"
+walkdir = "2"
+yaml_serde = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+dunce = "1"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

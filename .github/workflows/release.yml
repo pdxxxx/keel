@@ -2,203 +2,109 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing git tag to publish (e.g. v1.1.0)"
+        description: Existing release tag (v2.0.0)
         required: true
         type: string
 
 permissions:
   contents: read
+concurrency: release-${{ inputs.tag || github.ref_name }}
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  RUSTUP_TOOLCHAIN: stable
 
 jobs:
-  publish-npm:
-    name: Publish @pdxxxx/keel to npm
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Resolve tag
-        id: ref
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.ref.outputs.tag }}
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.34.9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: "https://registry.npmjs.org"
-          cache: pnpm
-
-      - name: Verify tag matches package.json and Cargo.toml
-        shell: bash
-        run: |
-          TAG="${{ steps.ref.outputs.tag }}"
-          EXPECTED="${TAG#v}"
-          PKG_VER="$(node -p "require('./package.json').version")"
-          CARGO_VER="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/keel-mcp/Cargo.toml | head -n1)"
-          if [ "$EXPECTED" != "$PKG_VER" ] || [ "$EXPECTED" != "$CARGO_VER" ]; then
-            echo "Version mismatch: tag=$TAG package.json=$PKG_VER Cargo.toml=$CARGO_VER" >&2
-            exit 1
-          fi
-          echo "version=$PKG_VER" >> "$GITHUB_OUTPUT"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck, build, and test
-        run: |
-          pnpm typecheck
-          pnpm build
-          pnpm test
-          node bin/keel.js rules check --strict
-
-      - name: Upgrade npm for OIDC Trusted Publishing
-        run: npm install -g npm@latest
-
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        shell: bash
-        run: |
-          PKG_NAME="$(node -p "require('./package.json').name")"
-          PKG_VER="$(node -p "require('./package.json').version")"
-          if npm view "${PKG_NAME}@${PKG_VER}" version >/dev/null 2>&1; then
-            echo "${PKG_NAME}@${PKG_VER} is already published on npm; skipping."
-            exit 0
-          fi
-          npm publish --provenance --access public
-
-  build-rust-mcp:
-    name: Build keel-mcp (${{ matrix.asset }})
+  build-binaries:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            bin: keel-mcp
-            asset: keel-mcp-linux-x86_64
-          - os: macos-latest
-            bin: keel-mcp
-            asset: keel-mcp-macos-arm64
-          - os: windows-latest
-            bin: keel-mcp.exe
-            asset: keel-mcp-windows-x86_64.exe
-
+          - {os: ubuntu-latest, target: x86_64-unknown-linux-gnu, asset: keel-linux-x86_64, bin: keel}
+          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, asset: keel-linux-aarch64, bin: keel}
+          - {os: macos-latest, target: aarch64-apple-darwin, asset: keel-macos-arm64, bin: keel}
+          - {os: macos-latest, target: x86_64-apple-darwin, asset: keel-macos-x86_64, bin: keel}
+          - {os: windows-latest, target: x86_64-pc-windows-msvc, asset: keel-windows-x86_64.exe, bin: keel.exe}
     runs-on: ${{ matrix.os }}
-    env:
-      RUSTUP_TOOLCHAIN: stable
-
     steps:
-      - name: Resolve tag
-        id: ref
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.ref.outputs.tag }}
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.34.9
-
+          ref: refs/tags/${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-
-      - name: Build CLI for parity check
+      - run: node .github/check-release.mjs
+      - run: rustup target add ${{ matrix.target }} --toolchain stable
+      - name: Enable x86_64 execution on Apple Silicon
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: arch -x86_64 /usr/bin/true || sudo softwareupdate --install-rosetta --agree-to-license
+      - run: cargo test --locked --target ${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - shell: bash
         run: |
-          pnpm install --frozen-lockfile
-          pnpm build
-
-      - name: Set up Rust
-        run: rustup toolchain install stable --profile minimal
-
-      - name: Test and build keel-mcp
-        working-directory: crates/keel-mcp
-        run: |
-          cargo test --locked
-          cargo build --release --locked
-
-      - name: Parity check
-        run: node crates/keel-mcp/tests/parity.mjs
-
-      - name: Stage release binary
-        shell: bash
-        run: |
-          mkdir -p release-artifacts
-          cp "crates/keel-mcp/target/release/${{ matrix.bin }}" "release-artifacts/${{ matrix.asset }}"
-
+          binary="target/${{ matrix.target }}/release/${{ matrix.bin }}"
+          "$binary" doctor
+          "$binary" rules check --strict
+          mkdir release-assets
+          cp "$binary" "release-assets/${{ matrix.asset }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
-          path: release-artifacts/${{ matrix.asset }}
+          path: release-assets/${{ matrix.asset }}
+          if-no-files-found: error
 
   github-release:
-    name: Publish GitHub Release assets
-    needs: [publish-npm, build-rust-mcp]
+    needs: [build-binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - name: Resolve tag
-        id: ref
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/download-artifact@v4
         with:
-          path: release-artifacts
+          pattern: keel-*
+          path: release-assets
           merge-multiple: true
-
-      - name: Generate SHA256SUMS
-        shell: bash
-        run: |
-          cd release-artifacts
-          sha256sum keel-mcp-* > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-
-      - name: Create or update GitHub Release
+      - name: Check completeness, generate hashes and upload before npm is visible
+        working-directory: release-assets
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          TAG="${{ steps.ref.outputs.tag }}"
-          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-artifacts/* --clobber --repo "${{ github.repository }}"
+          assets=(keel-linux-aarch64 keel-linux-x86_64 keel-macos-arm64 keel-macos-x86_64 keel-windows-x86_64.exe)
+          for asset in "${assets[@]}"; do test -s "$asset"; done
+          sha256sum "${assets[@]}" > SHA256SUMS.txt
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" release-artifacts/* \
-              --repo "${{ github.repository }}" \
-              --title "keel ${TAG}" \
-              --generate-notes
+            gh release create "$TAG" "${assets[@]}" SHA256SUMS.txt --verify-tag --title "Keel $TAG" --generate-notes --repo "$GITHUB_REPOSITORY"
           fi
+
+  publish-npm:
+    needs: [github-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install -g npm@latest
+      - run: node .github/check-release.mjs
+      - run: node --test npm/test.mjs
+      - name: Publish once with npm trusted publishing
+        shell: bash
+        run: |
+          status=$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/@pdxxxx%2fkeel/${TAG#v}")
+          case "$status" in
+            200) echo "Version ${TAG#v} is already published" ;;
+            404) npm publish --provenance --access public ;;
+            *) echo "Unexpected npm registry status: $status" >&2; exit 1 ;;
+          esac

@@ -33,7 +33,7 @@ export default defineConfig({
               items: [
                 { text: "Getting Started", link: "/guide/getting-started" },
                 { text: "Commands Reference", link: "/guide/commands" },
-                { text: "MCP Server (Node & Rust)", link: "/guide/mcp" },
+                { text: "MCP Server", link: "/guide/mcp" },
               ],
             },
             {
@@ -76,7 +76,7 @@ export default defineConfig({
               items: [
                 { text: "安装与起步", link: "/zh/guide/getting-started" },
                 { text: "命令参考", link: "/zh/guide/commands" },
-                { text: "MCP 服务（Node 与 Rust）", link: "/zh/guide/mcp" },
+                { text: "MCP 服务", link: "/zh/guide/mcp" },
               ],
             },
             {

@@ -3,7 +3,9 @@ id: ablate-atomic-backup
 summary: Verify backup SHA-256 before mutating repo and refuse restore on conflicts
 severity: invariant
 paths:
-  - src/core/ablate.ts
+  - src/snapshot.rs
+  - src/ablate.rs
+  - src/migrate.rs
 ---
 
 # Transaction-Safe Ablation & Restore

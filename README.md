@@ -10,7 +10,6 @@
   <a href="https://www.npmjs.com/package/@pdxxxx/keel"><img src="https://img.shields.io/npm/v/%40pdxxxx%2Fkeel?style=flat-square&color=cb3837" alt="npm version" /></a>
   <a href="https://github.com/pdxxxx/keel/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/pdxxxx/keel/ci.yml?style=flat-square&label=CI" alt="CI" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-2563eb?style=flat-square" alt="MIT License" /></a>
-  <img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node >= 20" />
   <img src="https://img.shields.io/badge/rust-1.85%2B-dea584?style=flat-square&logo=rust&logoColor=black" alt="Rust 1.85+" />
 </p>
 
@@ -18,7 +17,6 @@
   <a href="https://pdxxxx.github.io/keel/">Docs</a> ·
   <a href="./README_CN.md">简体中文</a> ·
   <a href="./ARCHITECTURE.md">Architecture</a> ·
-  <a href="./crates/keel-mcp/README.md">Rust MCP</a> ·
   <a href="./CHANGELOG.md">Changelog</a>
 </p>
 
@@ -26,17 +24,26 @@
 
 ---
 
-Keel stores project-specific rules, optional task specs, and check commands in plain files under `.keel/`, and searches local transcripts across Claude Code, Codex, OpenCode, and custom directories.
+Keel is a single Rust binary (~3.6 MiB) that stores project rules, optional task specs, and check commands under `.keel/`, searches local session logs across seven tools, and exposes 13 tools over stdio MCP.
 
-It does not manage sub-agents, install editor hooks, or lock you into a specific coding tool. Use it from the CLI or attach it over stdio MCP.
+It does not manage sub-agents, install editor hooks, or tie you to a specific coding tool.
 
-## Quick Start
-
-Requires **Node.js >= 20**.
+## Install
 
 ```sh
+# Recommended: installs the prebuilt native binary verified with SHA-256
 npm install -g @pdxxxx/keel@latest
 ```
+
+Or build directly from source with Rust 1.85+:
+
+```sh
+cargo install --git https://github.com/pdxxxx/keel --locked
+```
+
+Prebuilt binaries for Linux (`x86_64`, `aarch64`), macOS (`arm64`, `x86_64`), and Windows (`x86_64`) are also attached to [GitHub Releases](https://github.com/pdxxxx/keel/releases).
+
+## Quick Start
 
 ```sh
 # 1. Initialize .keel/, AGENTS.md block, and standard .agents/skills/
@@ -51,47 +58,51 @@ keel rules add auth-rotation \
 keel rules match --git
 
 # 4. Search past sessions and .keel/ docs
-keel mem search "refresh token"
+keel mem search "refresh token" --scope project
 
-# 5. Run checks matching your current git diff (or drop --git for all gates)
+# 5. Run checks matching your current git diff (drop --git for all gates)
 keel verify --git
 ```
 
 ## Existing Repos & Migration
 
-On a mature codebase, start with checks and git history rather than writing broad style docs:
-
 ```sh
-keel hotspots                         # find frequently fixed files worth adding rules for
-keel rules check --stale              # spot dead path globs or bloated rules
-keel migrate scan                     # inventory Trellis, .cursorrules, CLAUDE.md, etc.
-keel migrate plan                     # list hook conflicts, candidate gates, and rule sources
-keel migrate cleanup --dry-run        # preview safe removal (backed up; undo with `keel migrate rollback`)
+keel hotspots                    # rank existing files by recent bugfix churn
+keel doctor                      # check config.yaml, AGENTS.md markers, git, and stale rules
+keel update                      # refresh AGENTS.md block & skills without touching config.yaml
+keel migrate scan                # inventory Trellis, .cursorrules, CLAUDE.md, etc.
+keel migrate cleanup --dry-run   # preview safe removal (backed up; undo with `keel migrate rollback`)
 ```
-
-Pair `keel migrate` with the bundled `keel-migrate` skill to distill only non-obvious traps into `.keel/rules/`.
 
 ## Commands
 
-Every command supports `--json`.
+Global flags: `-C, --root <PATH>` and `--json`.
 
 | Command | Description |
 | --- | --- |
-| `keel init` | Creates `.keel/`, detects project scripts (`typecheck`, `lint`, `test`), updates `AGENTS.md`, and installs `.agents/skills/`. |
+| `keel init` | Creates `.keel/`, detects project scripts, updates `AGENTS.md`, installs 5 skills (never overwrites `config.yaml` unless `--reset-config`). |
+| `keel update` | Safely refreshes managed templates (`AGENTS.md` block, `rules/index.md`, `keel-*` skills) without touching user config, rules, or tasks. |
+| `keel doctor` | Validates `.keel/config.yaml` strictly, checks `AGENTS.md` markers, `git`, and stale rules. |
 | `keel rules` | `list`, `match [paths...] [--git \| --staged \| --base <ref>]`, `add <id>`, `check [--stale \| --strict]`. |
 | `keel task` | `create`, `list`, `show`, `done`, `reopen`, `archive` — optional single-file `spec.md` per task. |
-| `keel verify` | Runs gates in `.keel/config.yaml` (`--gate`, `--git`, `--staged`, `--base <ref>`, `--fail-fast`). |
+| `keel verify` | Runs gates in `.keel/config.yaml` (`--gate`, `--git`, `--staged`, `--base <ref>`, `--fail-fast`) with timeout and output-cap protection. |
 | `keel hotspots` | Ranks existing files by recent churn and bugfix commits (`--commits`, `--limit`). |
-| `keel mem` | `sources`, `sessions`, `search <query>`, `show <id>` across local AI transcripts and `.keel/`. |
-| `keel migrate` | `scan`, `plan`, `cleanup [--dry-run]`, `rollback` for moving off older AI setups safely. |
-| `keel ablate` / `restore` | Temporarily removes Keel files into a SHA-256 verified snapshot for A/B testing, then restores them cleanly. |
-| `keel mcp` | Starts the built-in stdio MCP server. |
+| `keel mem` | `sources`, `sessions`, `search`, `show` (`--scope project \| all`) across `.keel/`, Claude Code, Codex, OpenCode, Antigravity, Gemini, and custom dirs. |
+| `keel migrate` | `scan`, `plan`, `cleanup [--dry-run]`, `rollback` backed by SHA-256 external snapshots. |
+| `keel ablate` / `restore` | Temporarily removes Keel surfaces for A/B benchmarking and restores byte-for-byte. |
+| `keel mcp` | Starts the stdio MCP server (13 tools, multi-repo per-call `root`, optional `--lock-root`). |
 
 ## MCP Server
 
-Two compatible stdio implementations are included: Node.js (`keel mcp`) and a standalone Rust binary (`crates/keel-mcp`, ~2 MiB, no Node runtime needed).
+A single `keel mcp` process can serve multiple repositories safely (including behind MCP hubs/aggregators). Every tool accepts an optional `root` argument as highest priority.
 
-**Node.js**
+**Codex CLI (global)**
+
+```sh
+codex mcp add keel -- keel mcp
+```
+
+**Standard `mcpServers` JSON** (Claude Code, Cursor, OpenCode, Antigravity)
 
 ```json
 {
@@ -104,36 +115,23 @@ Two compatible stdio implementations are included: Node.js (`keel mcp`) and a st
 }
 ```
 
-**Native Rust** (`cargo build --release --locked --manifest-path crates/keel-mcp/Cargo.toml`)
-
-```json
-{
-  "mcpServers": {
-    "keel": {
-      "command": "/path/to/keel/crates/keel-mcp/target/release/keel-mcp",
-      "args": ["--root", "/path/to/your-project"]
-    }
-  }
-}
-```
+Pass `--root <path> --lock-root` if you want to pin an instance to a single repository.
 
 <details>
-<summary>Exposed MCP tools (9)</summary>
+<summary>Exposed MCP tools (13)</summary>
 
-- `keel_rules_list` · `keel_rules_match` · `keel_rules_check` (`stale?: boolean`)
-- `keel_task_list` · `keel_task_create` · `keel_task_show`
-- `keel_verify` (`gates?: string[]`, `git?: boolean`, `failFast?: boolean`)
-- `keel_mem_search` · `keel_mem_sessions`
+- `keel_rules_list` · `keel_rules_match` · `keel_rules_add` · `keel_rules_check`
+- `keel_task_list` · `keel_task_create` · `keel_task_show` · `keel_task_update`
+- `keel_verify` · `keel_hotspots`
+- `keel_mem_search` · `keel_mem_sessions` · `keel_mem_show`
 
 </details>
-
-See [crates/keel-mcp/README.md](./crates/keel-mcp/README.md) for Windows examples and parity checks.
 
 ## Repository Layout
 
 ```text
 .keel/
-  config.yaml        # verify gates (optional paths globs) and extra memory dirs
+  config.yaml        # verify gates (paths, timeoutMs, maxOutputChars) & memory sources
   rules/             # path-scoped markdown rules (YAML frontmatter)
   tasks/             # optional task specs (meta.json + spec.md)
 AGENTS.md            # managed block (<!-- KEEL:START --> ... <!-- KEEL:END -->)
