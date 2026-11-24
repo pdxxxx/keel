@@ -6,7 +6,7 @@ rust-version = "1.89"
 description = "Repository rules, task contracts, local session memory, and deterministic verification over CLI and MCP"
 license = "MIT"
 repository = "https://github.com/pdxxxx/keel"
-include = ["/src/**/*.rs", "/tests/**/*.rs", "/.agents/skills/keel-*/SKILL.md", "/.keel/rules/index.md", "/Cargo.*", "/LICENSE"]
+include = ["/src/**/*.rs", "/tests/**/*.rs", "/build.rs", "/assets/keel.ico", "/.agents/skills/keel-*/SKILL.md", "/.keel/rules/index.md", "/Cargo.*", "/LICENSE"]
 
 [dependencies]
 anyhow = "1"
@@ -25,6 +25,9 @@ yaml_serde = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 dunce = "1"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
 
 [profile.release]
 lto = true
