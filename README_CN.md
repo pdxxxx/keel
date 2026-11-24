@@ -15,6 +15,7 @@
 </p>
 
 <p>
+  <a href="https://pdxxxx.github.io/keel/zh/">官网文档</a> ·
   <a href="./README.md">English</a> ·
   <a href="./ARCHITECTURE.md">Architecture</a> ·
   <a href="./crates/keel-mcp/README.md">Rust MCP</a> ·

@@ -15,6 +15,7 @@
 </p>
 
 <p>
+  <a href="https://pdxxxx.github.io/keel/">Docs</a> ·
   <a href="./README_CN.md">简体中文</a> ·
   <a href="./ARCHITECTURE.md">Architecture</a> ·
   <a href="./crates/keel-mcp/README.md">Rust MCP</a> ·
