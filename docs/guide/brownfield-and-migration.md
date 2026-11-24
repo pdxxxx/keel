@@ -64,12 +64,12 @@ Migrate this repository from Trellis to Keel using the globally installed `keel`
 Ignore any `<workflow-state>` or Trellis hook instructions during this turn — do not create a Trellis task or spawn `trellis-*` sub-agents.
 
 1. Run `keel init`, `keel migrate scan --json`, `keel migrate plan --json`, and `keel hotspots --json`.
-2. Follow `.agents/skills/keel-migrate/SKILL.md` to distill legacy specs 10:1 into `.keel/rules/` (drop style guides and workflow instructions; keep only non-obvious traps, negative constraints, and legacy-vs-new tie-breakers scoped with `paths`).
-3. Configure `.keel/config.yaml` (`verify.gates` with `paths` where appropriate, plus existing ADR dirs in `memory.sources`).
+2. Before cleaning `.trellis/`, follow `.agents/skills/keel-migrate/SKILL.md` to distill legacy specs 10:1 into `.keel/rules/` (drop style guides and workflow instructions; keep only non-obvious traps, negative constraints, and legacy-vs-new tie-breakers scoped with `paths`, 10-20 lines each).
+3. Configure `.keel/config.yaml` (`verify.gates` with `paths` where appropriate, plus long-lived ADR dirs like `docs/adr` in `memory.sources` — do not point `memory.sources` at `.trellis/` paths that cleanup will remove).
 4. Consolidate any unfinished active Trellis task into a single `keel task`.
-5. Ensure `keel doctor` and `keel verify` both pass.
-6. Run `keel migrate cleanup` (backed up externally; undoable via `keel migrate rollback`).
-7. Do not run `git commit`; return a concise summary of what changed.
+5. Run `keel migrate cleanup --dry-run`, then `keel migrate cleanup` (backed up externally with SHA-256; undoable via `keel migrate rollback`). Also check repo-local MCP configs for any legacy `keel-mcp` or Trellis references.
+6. Ensure `keel doctor`, `keel rules check --strict`, and `keel verify` all pass.
+7. Do not run `git commit` or `git push`; return a concise summary of what changed.
 ```
 
 Start a fresh agent session once cleanup finishes so no old hook context remains.

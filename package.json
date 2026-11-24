@@ -1,6 +1,6 @@
 {
   "name": "@pdxxxx/keel",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Repo rules, task specs, session memory, and verification gates for coding agents.",
   "type": "module",
   "license": "MIT",

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1 — 2026-11-24
+
+- **Windows executable icon & metadata**: embedded `assets/keel.ico` (16–256px) and PE version metadata into `keel.exe` via `build.rs`.
+- **Copy-ready agent prompts**: added onboarding and upgrade prompts to Getting Started and tightened the Trellis → Keel migration prompt.
+- **Release tooling**: removed the hardcoded `2.0.0` version checks in `.github/check-release.mjs` and MCP handshake tests.
+
 ## 2.0.0 — 2026-11-24
 
 Pure Rust single-binary release (`keel`).

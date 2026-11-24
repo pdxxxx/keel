@@ -198,7 +198,7 @@ fn handshake_catalog_blank_lines_notifications_and_rpc_errors() {
     let init = server.request("initialize", json!({"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}));
     assert_eq!(
         init["result"],
-        json!({"serverInfo":{"name":"keel","version":"2.0.0"},"protocolVersion":"2024-11-05","capabilities":{"tools":{}}})
+        json!({"serverInfo":{"name":"keel","version":env!("CARGO_PKG_VERSION")},"protocolVersion":"2024-11-05","capabilities":{"tools":{}}})
     );
     server.send(b"\r\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"method\":\"notifications/cancelled\",\"id\":7}\n");
     let list = server.request("tools/list", json!({}));

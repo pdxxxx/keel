@@ -65,11 +65,11 @@ keel migrate rollback          # 如有需要，无损回滚
 
 本机已全局安装 `keel`，请直接一次性完成以下全部步骤（全程不要执行 `git commit`）：
 1. 运行 `keel init`、`keel migrate scan --json`、`keel migrate plan --json` 和 `keel hotspots --json`。
-2. 按 `.agents/skills/keel-migrate/SKILL.md` 做 10:1 提纯：丢弃代码风格和旧流程，将可自动化检查写进 `.keel/config.yaml` 的 `verify.gates`，历史 ADR 目录挂进 `memory.sources`，只把暗坑、负向约束和新旧模式裁决用 `keel rules add --paths` 写成短规则（≤ 20 行）。
+2. 在清理 `.trellis/` 之前，按 `.agents/skills/keel-migrate/SKILL.md` 做 10:1 提纯：丢弃代码风格和旧流程，将可自动化检查写进 `.keel/config.yaml` 的 `verify.gates`（Monorepo 加上 `paths`），长期 ADR 目录（如 `docs/adr`）挂进 `memory.sources`（不要把即将被清理的 `.trellis/` 子路径写进 `memory.sources`），只把暗坑、负向约束和新旧模式裁决用 `keel rules add --paths` 写成短规则（约 10–20 行）。
 3. 如有未完成的活跃 Trellis 任务，合并核心目标与验收标准建一个 `keel task`。
-4. 确保 `keel doctor` 与 `keel verify` 全部通过。
-5. 执行 `keel migrate cleanup` 备份并移除 Trellis 冲突文件（可随时 `keel migrate rollback` 回滚）。
-6. 输出一份精简迁移摘要，不要 git commit。
+4. 先执行 `keel migrate cleanup --dry-run` 核对，再执行 `keel migrate cleanup` 备份并移除 Trellis 冲突文件（外部 SHA-256 备份，可随时 `keel migrate rollback` 回滚），并顺手核查项目级 MCP 配置中是否有旧 Trellis/`keel-mcp` 引用。
+5. 确保 `keel doctor`、`keel rules check --strict` 与 `keel verify` 全部通过。
+6. 输出一份精简迁移摘要，不要 `git commit` 或 `git push`。
 ```
 
 清理完成后**新开一个干净会话**使用即可。

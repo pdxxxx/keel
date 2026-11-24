@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1 - 2026-11-24
+
+- Embedded `assets/keel.ico` (16–256px) and Windows PE version metadata into `keel.exe` via `build.rs` and `winresource`.
+- Added copy-ready coding agent prompts for new-repo initialization, v2.x upgrades, and Trellis migration to the bilingual docs site.
+- Made release tag validation and MCP `serverInfo.version` tests version-agnostic across patch releases.
+
 ## 2.0.0 - 2026-11-24
 
 Pure Rust single-binary release (`keel`).
