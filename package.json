@@ -1,5 +1,5 @@
 {
-  "name": "keel-cli",
+  "name": "@pdxxxx/keel",
   "version": "1.1.0",
   "description": "Repo rules, task specs, session memory, and verification gates for coding agents.",
   "type": "module",
@@ -27,11 +27,10 @@
     "node": ">=20.0.0"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "bin": {
-    "keel": "./bin/keel.js"
+    "keel": "bin/keel.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

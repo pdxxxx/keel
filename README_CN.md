@@ -7,7 +7,7 @@
 **面向 AI 编程的仓库规范、任务记录、会话检索与验证门禁工具。**
 
 <p>
-  <a href="https://www.npmjs.com/package/keel-cli"><img src="https://img.shields.io/npm/v/keel-cli?style=flat-square&color=cb3837" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@pdxxxx/keel"><img src="https://img.shields.io/npm/v/%40pdxxxx%2Fkeel?style=flat-square&color=cb3837" alt="npm version" /></a>
   <a href="https://github.com/pdxxxx/keel/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/pdxxxx/keel/ci.yml?style=flat-square&label=CI" alt="CI" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-2563eb?style=flat-square" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node >= 20" />
@@ -34,7 +34,7 @@ Keel 把项目规则、可选任务文档和校验命令以纯文本形式存在
 需要 **Node.js >= 20**。
 
 ```sh
-npm install -g keel-cli@latest
+npm install -g @pdxxxx/keel@latest
 ```
 
 ```sh
