@@ -7,6 +7,7 @@
 **Repo rules, task specs, session memory, and verification gates for coding agents.**
 
 <p>
+  <a href="https://www.npmjs.com/package/keel-cli"><img src="https://img.shields.io/npm/v/keel-cli?style=flat-square&color=cb3837" alt="npm version" /></a>
   <a href="https://github.com/pdxxxx/keel/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/pdxxxx/keel/ci.yml?style=flat-square&label=CI" alt="CI" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-2563eb?style=flat-square" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node >= 20" />
@@ -33,7 +34,7 @@ It does not manage sub-agents, install editor hooks, or lock you into a specific
 Requires **Node.js >= 20**.
 
 ```sh
-pnpm install && pnpm build
+npm install -g keel-cli@latest
 ```
 
 ```sh

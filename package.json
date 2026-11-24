@@ -1,15 +1,34 @@
 {
   "name": "keel-cli",
   "version": "1.1.0",
-  "description": "Harness-agnostic engineering context, memory, and verification layer for AI coding.",
+  "description": "Repo rules, task specs, session memory, and verification gates for coding agents.",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/pdxxxx/keel#readme",
+  "bugs": {
+    "url": "https://github.com/pdxxxx/keel/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/pdxxxx/keel.git"
+    "url": "git+https://github.com/pdxxxx/keel.git"
   },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "mcp",
+    "cli",
+    "agents-md",
+    "rules",
+    "memory",
+    "verification",
+    "keel"
+  ],
   "engines": {
     "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "bin": {
     "keel": "./bin/keel.js"
@@ -26,7 +45,9 @@
     "bin",
     "dist",
     "README.md",
+    "README_CN.md",
     "ARCHITECTURE.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -34,7 +55,8 @@
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm typecheck && pnpm build && pnpm test"
   },
   "dependencies": {
     "commander": "^13.1.0",

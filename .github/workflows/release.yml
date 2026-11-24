@@ -1,0 +1,201 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing git tag to publish (e.g. v1.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-npm:
+    name: Publish keel-cli to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Resolve tag
+        id: ref
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.tag }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+          cache: pnpm
+
+      - name: Verify tag matches package.json and Cargo.toml
+        shell: bash
+        run: |
+          TAG="${{ steps.ref.outputs.tag }}"
+          EXPECTED="${TAG#v}"
+          PKG_VER="$(node -p "require('./package.json').version")"
+          CARGO_VER="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/keel-mcp/Cargo.toml | head -n1)"
+          if [ "$EXPECTED" != "$PKG_VER" ] || [ "$EXPECTED" != "$CARGO_VER" ]; then
+            echo "Version mismatch: tag=$TAG package.json=$PKG_VER Cargo.toml=$CARGO_VER" >&2
+            exit 1
+          fi
+          echo "version=$PKG_VER" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck, build, and test
+        run: |
+          pnpm typecheck
+          pnpm build
+          pnpm test
+          node bin/keel.js rules check --strict
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          PKG_NAME="$(node -p "require('./package.json').name")"
+          PKG_VER="$(node -p "require('./package.json').version")"
+          if npm view "${PKG_NAME}@${PKG_VER}" version >/dev/null 2>&1; then
+            echo "${PKG_NAME}@${PKG_VER} is already published on npm; skipping."
+            exit 0
+          fi
+          npm publish --provenance --access public
+
+  build-rust-mcp:
+    name: Build keel-mcp (${{ matrix.asset }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bin: keel-mcp
+            asset: keel-mcp-linux-x86_64
+          - os: macos-latest
+            bin: keel-mcp
+            asset: keel-mcp-macos-arm64
+          - os: windows-latest
+            bin: keel-mcp.exe
+            asset: keel-mcp-windows-x86_64.exe
+
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTUP_TOOLCHAIN: stable
+
+    steps:
+      - name: Resolve tag
+        id: ref
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.tag }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Build CLI for parity check
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Test and build keel-mcp
+        working-directory: crates/keel-mcp
+        run: |
+          cargo test --locked
+          cargo build --release --locked
+
+      - name: Parity check
+        run: node crates/keel-mcp/tests/parity.mjs
+
+      - name: Stage release binary
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          cp "crates/keel-mcp/target/release/${{ matrix.bin }}" "release-artifacts/${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: release-artifacts/${{ matrix.asset }}
+
+  github-release:
+    name: Publish GitHub Release assets
+    needs: [publish-npm, build-rust-mcp]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Resolve tag
+        id: ref
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        run: |
+          cd release-artifacts
+          sha256sum keel-mcp-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${{ steps.ref.outputs.tag }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-artifacts/* --clobber --repo "${{ github.repository }}"
+          else
+            gh release create "$TAG" release-artifacts/* \
+              --repo "${{ github.repository }}" \
+              --title "keel ${TAG}" \
+              --generate-notes
+          fi
